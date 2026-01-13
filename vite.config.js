@@ -9,5 +9,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: "/TTP_IML_1/",   
+  // base: "/TTP_IML_1/",   
 })

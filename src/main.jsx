@@ -5,7 +5,8 @@ import App from "./App";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <BrowserRouter  basename="/TTP_IML_1">
+  // basename="/TTP_IML_1"
+  <BrowserRouter  >
     <App />
   </BrowserRouter>
 );
