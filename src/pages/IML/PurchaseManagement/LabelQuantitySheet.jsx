@@ -143,12 +143,12 @@ const LabelQuantitySheet = () => {
       const prodRec = all[prodKey] || null;
       if (prodRec) {
         if (currentProduct.imlType === "LID & TUB") {
-          setLidQtyReceived(prodRec.lidReceivedQuantity ?? "");
-          setTubQtyReceived(prodRec.tubReceivedQuantity ?? "");
+          // setLidQtyReceived(prodRec.lidReceivedQuantity ?? "");
+          // setTubQtyReceived(prodRec.tubReceivedQuantity ?? "");
           setProductComplete(Boolean(prodRec.productComplete));
           setSingleQtyReceived("");
         } else {
-          setSingleQtyReceived(prodRec.receivedQuantity ?? "");
+          // setSingleQtyReceived(prodRec.receivedQuantity ?? "");
           setProductComplete(Boolean(prodRec.productComplete));
           setLidQtyReceived("");
           setTubQtyReceived("");

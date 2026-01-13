@@ -557,7 +557,6 @@ const PODetails = () => {
 
                         {/* PO Number Input */}
                         <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
-
                           {product.imlType === "LID & TUB" ? (
                             <div className="flex flex-col gap-1">
                               <div className="flex gap-[1vw]">
@@ -1233,35 +1232,67 @@ const PODetails = () => {
                       <span className="text-[1.2vw]">📋</span> Purchase Order
                       Details
                     </h3>
-                    <div className="grid grid-cols-3 gap-[1vw]">
-                      <div>
-                        <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                          PO Number
-                        </label>
+
+                    {viewingProduct.imlType === "LID & TUB" ? (
+                      <div className="space-y-[1vw]">
+                        {/* LID */}
+                        <div>
+                          <h4 className="text-[.9vw] font-semibold text-amber-800 mb-[0.5vw]">
+                            LID
+                          </h4>
+                          <div className="grid grid-cols-3 gap-[1vw]">
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.lid
+                                ?.poNumber || "Not Set"}
+                            </div>
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.lid
+                                ?.labelType || "Not Set"}
+                            </div>
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.lid
+                                ?.supplier || "Not Set"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* TUB */}
+                        <div>
+                          <h4 className="text-[.9vw] font-semibold text-amber-800 mb-[0.5vw]">
+                            TUB
+                          </h4>
+                          <div className="grid grid-cols-3 gap-[1vw]">
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.tub
+                                ?.poNumber || "Not Set"}
+                            </div>
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.tub
+                                ?.labelType || "Not Set"}
+                            </div>
+                            <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
+                              {productPODetails[viewingProduct.id]?.tub
+                                ?.supplier || "Not Set"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-[1vw]">
                         <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
                           {productPODetails[viewingProduct.id]?.poNumber ||
                             "Not Set"}
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                          Label Type
-                        </label>
                         <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
                           {productPODetails[viewingProduct.id]?.labelType ||
                             "Not Set"}
                         </div>
-                      </div>
-                      <div>
-                        <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                          Supplier Name
-                        </label>
                         <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] font-semibold">
                           {productPODetails[viewingProduct.id]?.supplier ||
                             "Not Set"}
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useLocation } from "react-router-dom";
 
 // Storage keys
-const DATA_VERSION = "2.0";
+const DATA_VERSION = "2.1";
 const VERSION_KEY = "iml_purchase_version";
 const STORAGE_KEY_ORDERS = "imlorders";
 const STORAGE_KEY_TRACKING = "iml_tracking_followups";

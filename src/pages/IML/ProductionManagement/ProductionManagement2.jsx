@@ -23,10 +23,53 @@ const ProductionManagement = () => {
   const [expandedColors, setExpandedColors] = useState({});
 
   const toNumber = (value) => {
-    if (!value || value == '0') return 0;
-    return Number(String(value).replace(/,/g, ''));
+    if (!value || value == "0") return 0;
+    return Number(String(value).replace(/,/g, ""));
   };
 
+  const getTotalLabels = (orderId, productId, imlType) => {
+    const labelData = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}"
+    );
+    const exactKey = `${orderId}_${productId}`;
+    const item = labelData[exactKey];
+
+    if (!item) return { lidTotal: 0, tubTotal: 0, total: 0 };
+
+    let lidTotal = 0;
+    let tubTotal = 0;
+
+    if (item.history && Array.isArray(item.history)) {
+      item.history.forEach((h) => {
+        if (h.imlType === "LID & TUB") {
+          // LID & TUB: Separate counts
+          lidTotal += Number(h.lidReceivedQuantity || 0);
+          tubTotal += Number(h.tubReceivedQuantity || 0);
+        } else if (h.imlType === "LID") {
+          // LID only: count only lid
+          lidTotal += Number(h.receivedQuantity || h.lidReceivedQuantity || 0);
+        } else if (h.imlType === "TUB") {
+          // TUB only: count only tub
+          tubTotal += Number(h.receivedQuantity || h.tubReceivedQuantity || 0);
+        } else {
+          // For backward compatibility
+          const qty = Number(
+            h.receivedQuantity ||
+              h.lidReceivedQuantity ||
+              h.tubReceivedQuantity ||
+              0
+          );
+          if (qty > 0) {
+            lidTotal += qty;
+            tubTotal += qty;
+          }
+        }
+      });
+    }
+
+    const total = lidTotal + tubTotal;
+    return { lidTotal, tubTotal, total };
+  };
 
   // Load production data
   const loadProductionData = () => {
@@ -54,62 +97,86 @@ const ProductionManagement = () => {
             const key = `${order.id}_${product.id}`;
             const labelInfo = labelData[key];
 
-            const storedProduction = localStorage.getItem(STORAGE_KEY_PRODUCTION_FOLLOWUPS);
-            const allProductionData = storedProduction ? JSON.parse(storedProduction) : {};
-            const followups = allProductionData[key] || [];
+            const storedProduction = localStorage.getItem(
+              STORAGE_KEY_PRODUCTION_FOLLOWUPS
+            );
+            const allProductionData = storedProduction
+              ? JSON.parse(storedProduction)
+              : {};
+            const followups = Array.isArray(allProductionData[key])
+              ? allProductionData[key]
+              : [];
 
-            const totalLabels = labelInfo ? labelInfo.noOfLabels : 0;  // Use noOfLabels as total
-            console.log(`Label Info: ${JSON.stringify(labelInfo, null, 2)}`);
-            // console.log("Total Labels: ", totalLabels);
+            // Get total labels using the getTotalLabels function for accuracy
+            const labelTotals = getTotalLabels(
+              order.id,
+              product.id,
+              product.imlType
+            );
 
-            const usedLabels = followups.reduce((sum, e) => {
-              const accepted = Number(e.acceptedComponents) || 0;
-              return sum + accepted;
-            }, 0);
+            // Calculate used labels separately for LID and TUB
+            let lidUsed = 0;
+            let tubUsed = 0;
+            let totalUsed = 0;
 
-            // order.forEach((o, k) => {
-            //   console.log(`Order Item: ${o} - ${k}`);
-            // })
-            // Object.keys(order => ())
-            // console.log(`Order details: ${JSON.stringify(order, null, 2)}`);
-            // console.log(`Product details: ${product}`);
-            
-            
-            // Only include if labels have been received
-            if (labelInfo && labelInfo.receivedQuantity > 0) {
-              const remainingLabels = Math.max((labelInfo.receivedQuantity || 0) - usedLabels, 0);
+            if (product.imlType === "LID & TUB") {
+              followups.forEach((e) => {
+                const accepted = toNumber(e.acceptedComponents || 0);
+                // Check componentType if available
+                if (e.componentType === "LID") {
+                  lidUsed += accepted;
+                } else if (e.componentType === "TUB") {
+                  tubUsed += accepted;
+                } else {
+                  // For backward compatibility
+                  lidUsed += accepted;
+                  tubUsed += accepted;
+                }
+              });
+              totalUsed = lidUsed + tubUsed;
+            } else {
+              // For single type
+              totalUsed = followups.reduce((sum, e) => {
+                const accepted = toNumber(e.acceptedComponents || 0);
+                return sum + accepted;
+              }, 0);
+              lidUsed = totalUsed;
+              tubUsed = totalUsed;
+            }
 
-              // console.log(`Product: ${product.productName} ${product.size}`)
-              // console.log(`Used labels: ${usedLabels}`)
-              console.log(`Total labels: ${product.noOfLabels}`)
-              console.log(`Remaining labels: ${remainingLabels}`)
+            if (labelInfo) {
               productionItems.push({
                 id: key,
                 orderId: order.id,
                 productId: product.id,
-                orderNumber: order.orderNumber,
+                orderNumber: order.orderNumber, // Added this line
                 companyName: order.contact.company,
                 productCategory: product.productName,
                 size: product.size,
                 imlName: product.imlName,
-                imlType: product.imlType,
+                imlType: product.imlType || labelInfo.imlType,
                 labelType: labelInfo.imlType,
                 lidColor: product.lidColor || "N/A",
                 tubColor: product.tubColor || "N/A",
                 orderQuantity: labelInfo.orderQuantity,
                 receivedQuantity: labelInfo.receivedQuantity,
                 allReceived: labelInfo.allReceived || false,
-                remainingLabels,
+                lidTotal: labelTotals.lidTotal,
+                tubTotal: labelTotals.tubTotal,
+                lidRemaining: Math.max(labelTotals.lidTotal - lidUsed, 0),
+                tubRemaining: Math.max(labelTotals.tubTotal - tubUsed, 0),
+                // FIXED: For single type, show correct remaining
+                remainingLabels:
+                  product.imlType === "LID"
+                    ? Math.max(labelTotals.lidTotal - lidUsed, 0)
+                    : product.imlType === "TUB"
+                    ? Math.max(labelTotals.tubTotal - tubUsed, 0)
+                    : Math.max(labelTotals.total - totalUsed, 0),
               });
-              
             }
-            
           }
         });
-
       });
-
-    
 
       console.log("✅ Production items loaded:", productionItems.length);
       setProductionData(productionItems);
@@ -161,18 +228,44 @@ const ProductionManagement = () => {
   }, [productionData]);
 
   // Get production status
-  const getProductionStatus = (item) => {
-    const storedFollowups = localStorage.getItem(STORAGE_KEY_PRODUCTION_FOLLOWUPS);
-    const followups = storedFollowups ? JSON.parse(storedFollowups)[item.id] : [];
+  const getProductionStatus = (itemId) => {
+    const storedFollowups = localStorage.getItem(
+      STORAGE_KEY_PRODUCTION_FOLLOWUPS
+    );
+    const allProductionData = storedFollowups
+      ? JSON.parse(storedFollowups)
+      : {};
 
-    console.log(`Item: ${item}`);
-    console.log(`Followups: ${followups}`);
-    console.log(`Items Remaining Labels: ${item.remainingLabels}`);
-    if (!followups || followups.length === 0) return "Pending";
-    if (item.remainingLabels === 0) return "Completed";
+    const followups = Array.isArray(allProductionData[itemId])
+      ? allProductionData[itemId]
+      : [];
+
+    const item = productionData.find((item) => item.id === itemId);
+    if (!item) return "Pending";
+
+    const isLidTub = item.imlType === "LID & TUB";
+    const isLidOnly = item.imlType === "LID";
+    const isTubOnly = item.imlType === "TUB";
+
+    if (followups.length === 0) return "Pending";
+
+    if (isLidTub) {
+      // For LID & TUB, check both lid and tub remaining
+      if (item.lidRemaining === 0 && item.tubRemaining === 0)
+        return "Completed";
+    } else if (isLidOnly) {
+      // For LID only, check lid remaining
+      if (item.lidRemaining === 0) return "Completed";
+    } else if (isTubOnly) {
+      // For TUB only, check tub remaining
+      if (item.tubRemaining === 0) return "Completed";
+    } else {
+      // For other types (single/combined), check remainingLabels
+      if (item.remainingLabels === 0) return "Completed";
+    }
+
     return "In Progress";
   };
-
 
   // Group by hierarchy: Category → Size → Color
   const groupByHierarchy = () => {
@@ -304,6 +397,11 @@ const ProductionManagement = () => {
           imlName: item.imlName,
           imlType: item.imlType,
           containerColor: `Lid: ${item.lidColor}, Tub: ${item.tubColor}`,
+          lidRemaining: item.lidRemaining,
+          tubRemaining: item.tubRemaining,
+          // For backward compatibility with non-LID&TUB types
+          lidTotalLabels: item.lidTotal,
+          tubTotalLabels: item.tubTotal,
           noOfLabels: item.receivedQuantity,
         },
       },
@@ -600,6 +698,7 @@ const ProductionManagement = () => {
                                   </div>
 
                                   {/* Items Table */}
+                                  {/* Items Table */}
                                   {isColorExpanded && (
                                     <div className="px-[0.85vw] pb-[0.85vw]">
                                       <table className="w-full border-collapse">
@@ -607,6 +706,9 @@ const ProductionManagement = () => {
                                           <tr className="bg-gray-200">
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
                                               S.No
+                                            </th>
+                                            <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
+                                              Order No
                                             </th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
                                               Company Name
@@ -619,6 +721,9 @@ const ProductionManagement = () => {
                                             </th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
                                               Label Type
+                                            </th>
+                                            <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
+                                              Available Labels
                                             </th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center text-[.8vw] font-semibold">
                                               Production Status
@@ -641,6 +746,9 @@ const ProductionManagement = () => {
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
                                                   {idx + 1}
                                                 </td>
+                                                <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-medium">
+                                                  {item.orderNumber}
+                                                </td>
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold">
                                                   {item.companyName}
                                                 </td>
@@ -655,10 +763,31 @@ const ProductionManagement = () => {
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
                                                   {item.labelType}
                                                 </td>
+                                                <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                  {item.imlType ===
+                                                  "LID & TUB" ? (
+                                                    <div className="space-y-0.5">
+                                                      <div className="font-semibold text-green-700 flex items-center gap-1">
+                                                        LID: {item.lidRemaining}
+                                                      </div>
+                                                      <div className="font-semibold text-blue-700 flex items-center gap-1">
+                                                        TUB: {item.tubRemaining}
+                                                      </div>
+                                                    </div>
+                                                  ) : (
+                                                    <span className="font-semibold text-blue-700">
+                                                      {item.remainingLabels}
+                                                    </span>
+                                                  )}
+                                                </td>
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
                                                   {status === "Pending" ? (
                                                     <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[.75vw] font-semibold">
                                                       ⏳ Pending
+                                                    </span>
+                                                  ) : status === "Completed" ? (
+                                                    <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 rounded text-[.75vw] font-semibold">
+                                                      ✅ Completed
                                                     </span>
                                                   ) : (
                                                     <span className="inline-block px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded text-[.75vw] font-semibold">
