@@ -694,12 +694,7 @@ useEffect(() => {
                                           </p>
                                         </div>
                                       </div>
-                                      <div className="text-right">
-                                        <p className="text-[0.85vw] text-gray-600">Bill Amount</p>
-                                        <p className="text-[0.9vw] font-bold text-green-700">
-                                          ₹{parseFloat(dispatchRecords[0]?.estimatedValue || 0).toLocaleString()}
-                                        </p>
-                                      </div>
+                                      
                                     </div>
                                   </div>
                                   
