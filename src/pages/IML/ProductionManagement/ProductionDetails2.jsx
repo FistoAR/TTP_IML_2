@@ -5,6 +5,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 const STORAGE_KEY_PRODUCTION_FOLLOWUPS = "iml_production_followups";
 const STORAGE_KEY_LABEL_QTY = "iml_label_quantity_received";
 
+const STORAGE_KEY_REMAINING_PRODUCTION = "iml_remaining_production_followups";
+
 // Machine options
 const MACHINE_OPTIONS = ["01", "02", "03", "04", "05"];
 
@@ -88,73 +90,246 @@ const ProductionDetails = () => {
   const lidMachineInputRef = useRef(null);
   const tubMachineInputRef = useRef(null);
 
-  const getTotalLabels = (orderId, productId) => {
+  const [isFromRemaining, setIsFromRemaining] = useState(false);
+  const [totalQuantity, setTotalQuantity] = useState(0);
+  const [lidQuantity, setLidQuantity] = useState(0);
+  const [tubQuantity, setTubQuantity] = useState(0);
+
+  const [allocatedQty, setAllocatedQty] = useState(0);
+
+  const [mainLidTotal, setMainLidTotal] = useState(0);
+  const [mainTubTotal, setMainTubTotal] = useState(0);
+  const [allocatedLid, setAllocatedLid] = useState(0);
+  const [allocatedTub, setAllocatedTub] = useState(0);
+
+  // const getTotalLabels = (orderId, productId) => {
+  //   const labelData = JSON.parse(
+  //     localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}"
+  //   );
+
+  //   // ONLY look at EXACT key for this order+product
+  //   const exactKey = `${orderId}_${productId}`;
+  //   const item = labelData[exactKey];
+
+  //   if (!item) {
+  //     console.log("❌ No data found for key:", exactKey);
+  //     return { lidTotal: 0, tubTotal: 0 };
+  //   }
+
+  //   let lidTotal = 0;
+  //   let tubTotal = 0;
+
+  //   // **ONLY** sum HISTORY entries - NO outer item quantity
+  //   if (item.history && Array.isArray(item.history)) {
+  //     item.history.forEach((h, idx) => {
+  //       if (h.imlType === "LID & TUB") {
+  //         // LID & TUB: Separate counts
+  //         lidTotal += Number(h.lidReceivedQuantity || 0);
+  //         tubTotal += Number(h.tubReceivedQuantity || 0);
+  //       } else {
+  //         // Single type: add to both (for backward compatibility)
+  //         const qty = Number(
+  //           h.receivedQuantity ||
+  //             h.lidReceivedQuantity ||
+  //             h.tubReceivedQuantity ||
+  //             0
+  //         );
+  //         if (qty > 0) {
+  //           lidTotal += qty;
+  //           tubTotal += qty;
+  //         }
+  //       }
+  //     });
+  //   }
+
+  //   console.log(`✅ LID TOTAL for ${exactKey}: ${lidTotal}`);
+  //   console.log(`✅ TUB TOTAL for ${exactKey}: ${tubTotal}`);
+  //   return { lidTotal, tubTotal };
+  // };
+
+  // Check if entry is LID & TUB type
+
+  // ProductionDetails2.jsx - Update the getTotalLabels function
+
+  const getTotalLabels = (orderId, productId, entryData) => {
+    // If we have pre-calculated values from ProductionManagement, use them directly
+    if (entryData && entryData.calculatedTotal !== undefined) {
+      console.log(`✅ Using pre-calculated values from ProductionManagement`);
+      return {
+        totalQuantity: entryData.calculatedTotal || 0,
+        lidQuantity: entryData.calculatedLidTotal || 0,
+        tubQuantity: entryData.calculatedTubTotal || 0,
+        isFromRemaining: entryData.isFromRemaining || false,
+      };
+    }
+
+    // Fallback: Calculate from localStorage (original logic)
     const labelData = JSON.parse(
-      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}"
+      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}",
     );
 
-    // ONLY look at EXACT key for this order+product
     const exactKey = `${orderId}_${productId}`;
     const item = labelData[exactKey];
 
     if (!item) {
       console.log("❌ No data found for key:", exactKey);
-      return { lidTotal: 0, tubTotal: 0 };
+      return {
+        totalQuantity: 0,
+        lidQuantity: 0,
+        tubQuantity: 0,
+        isFromRemaining: false,
+      };
     }
 
-    let lidTotal = 0;
-    let tubTotal = 0;
+    let totalQuantity = 0;
+    let lidQuantity = 0;
+    let tubQuantity = 0;
+    let isFromRemaining = false;
 
-    // **ONLY** sum HISTORY entries - NO outer item quantity
-    if (item.history && Array.isArray(item.history)) {
-      item.history.forEach((h, idx) => {
-        if (h.imlType === "LID & TUB") {
-          // LID & TUB: Separate counts
-          lidTotal += Number(h.lidReceivedQuantity || 0);
-          tubTotal += Number(h.tubReceivedQuantity || 0);
-        } else {
-          // Single type: add to both (for backward compatibility)
-          const qty = Number(
-            h.receivedQuantity ||
-              h.lidReceivedQuantity ||
-              h.tubReceivedQuantity ||
-              0
-          );
-          if (qty > 0) {
-            lidTotal += qty;
-            tubTotal += qty;
+    // Check for allocations from remaining orders
+    const allocationData = JSON.parse(
+      localStorage.getItem("iml_production_allocation") || "{}",
+    );
+    const allocations = allocationData[exactKey] || [];
+    const allocatedQty = allocations.reduce(
+      (sum, alloc) => sum + (alloc.allocatedQty || 0),
+      0,
+    );
+
+    if (allocatedQty > 0) {
+      // If there are allocations, this is from remaining
+      isFromRemaining = true;
+      totalQuantity = allocatedQty;
+
+      // Determine how to split based on imlType
+      if (item.imlType === "LID & TUB") {
+        lidQuantity = Math.floor(allocatedQty / 2);
+        tubQuantity = allocatedQty - lidQuantity;
+      } else if (item.imlType === "LID") {
+        lidQuantity = allocatedQty;
+        tubQuantity = 0;
+      } else if (item.imlType === "TUB") {
+        lidQuantity = 0;
+        tubQuantity = allocatedQty;
+      } else {
+        lidQuantity = allocatedQty;
+        tubQuantity = 0;
+      }
+
+      console.log(
+        `✅ Using Remaining Allocation: ${totalQuantity} for ${exactKey}`,
+      );
+    } else {
+      // If no allocations, use main order history
+      if (item.history && Array.isArray(item.history)) {
+        item.history.forEach((h) => {
+          if (h.imlType === "LID & TUB") {
+            const lidQty = Number(h.lidReceivedQuantity || 0);
+            const tubQty = Number(h.tubReceivedQuantity || 0);
+            lidQuantity += lidQty;
+            tubQuantity += tubQty;
+            totalQuantity += lidQty + tubQty;
+          } else {
+            const qty = Number(
+              h.receivedQuantity ||
+                h.lidReceivedQuantity ||
+                h.tubReceivedQuantity ||
+                0,
+            );
+            if (qty > 0) {
+              lidQuantity += qty;
+              tubQuantity += qty;
+              totalQuantity += qty;
+            }
           }
-        }
-      });
+        });
+      }
+      console.log(
+        `✅ Using Main Order: LID=${lidQuantity}, TUB=${tubQuantity}, Total=${totalQuantity} for ${exactKey}`,
+      );
     }
 
-    console.log(`✅ LID TOTAL for ${exactKey}: ${lidTotal}`);
-    console.log(`✅ TUB TOTAL for ${exactKey}: ${tubTotal}`);
-    return { lidTotal, tubTotal };
+    return {
+      totalQuantity,
+      lidQuantity,
+      tubQuantity,
+      isFromRemaining,
+    };
   };
 
-  // Check if entry is LID & TUB type
   const isLidAndTub = entry?.imlType === "LID & TUB";
 
   // Load data from localStorage and prefill from entry
   useEffect(() => {
     if (entry) {
-      const entryId = entry.id;
+      console.log("📦 Entry received in ProductionDetails:", entry);
 
-      // Load production entries from localStorage
-      const storedProduction = localStorage.getItem(
-        STORAGE_KEY_PRODUCTION_FOLLOWUPS
-      );
+      // Use pre-calculated values if available
+      const hasPreCalculated = entry.calculatedTotal !== undefined;
+
+      let labelTotals;
+      if (hasPreCalculated) {
+        labelTotals = {
+          totalQuantity: entry.calculatedTotal || 0,
+          lidQuantity: entry.calculatedLidTotal || 0,
+          tubQuantity: entry.calculatedTubTotal || 0,
+          isFromRemaining: entry.isFromRemaining || false,
+        };
+        console.log("✅ Using pre-calculated totals:", labelTotals);
+      } else {
+        // Fallback to calculating
+        labelTotals = getTotalLabels(entry.orderId, entry.productId, entry);
+        console.log("🔄 Calculated totals:", labelTotals);
+      }
+
+      const isRemainingAllocation = entry.sourceType === "remaining";
+      const storageKey = isRemainingAllocation
+        ? STORAGE_KEY_REMAINING_PRODUCTION
+        : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+      const storedProduction = localStorage.getItem(storageKey);
       const allProductionData = storedProduction
         ? JSON.parse(storedProduction)
         : {};
-      const entriesHistory = allProductionData[entryId] || [];
+      const entriesHistory = allProductionData[entry.id] || [];
 
       setProductionEntries(entriesHistory);
+      setIsFromRemaining(isRemainingAllocation);
 
-      const labelTotals = getTotalLabels(entry.orderId, entry.productId);
+      // Always use the totals we have (either pre-calculated or calculated)
+      setTotalQuantity(labelTotals.totalQuantity);
+      setLidQuantity(labelTotals.lidQuantity);
+      setTubQuantity(labelTotals.tubQuantity);
 
-      // Prefill customer form
+      // Calculate used labels from entries
+      const lidUsed = entriesHistory.reduce((sum, e) => {
+        if (e.componentType === "LID" || e.componentType === "SINGLE") {
+          const accepted = toNumber(e.acceptedComponents);
+          return sum + accepted;
+        }
+        return sum;
+      }, 0);
+
+      const tubUsed = entriesHistory.reduce((sum, e) => {
+        if (e.componentType === "TUB") {
+          const accepted = toNumber(e.acceptedComponents);
+          return sum + accepted;
+        }
+        return sum;
+      }, 0);
+
+      // Set remaining labels
+      if (isLidAndTub) {
+        const remainingLid = Math.max(labelTotals.lidQuantity - lidUsed, 0);
+        const remainingTub = Math.max(labelTotals.tubQuantity - tubUsed, 0);
+        setRemainingLidLabels(remainingLid);
+        setRemainingTubLabels(remainingTub);
+      } else {
+        const remaining = Math.max(labelTotals.totalQuantity - lidUsed, 0);
+        setRemainingLidLabels(remaining);
+      }
+
+      // Prefill customer form with the correct values
       setCustomerForm({
         customerName: entry.company || "",
         size: entry.size || "",
@@ -165,40 +340,18 @@ const ProductionDetails = () => {
         tubMachineNumber: entry.tubMachineNumber || entry.machineNumber || "",
         lidReceivedBy: entry.lidReceivedBy || entry.receivedBy || "",
         tubReceivedBy: entry.tubReceivedBy || entry.receivedBy || "",
-        lidTotalLabels: labelTotals.lidTotal || entry.lidRemaining || 0,
-        tubTotalLabels: labelTotals.tubTotal || entry.tubRemaining || 0,
-        lidRemaining: entry.lidRemaining || labelTotals.lidTotal || 0,
-        tubRemaining: entry.tubRemaining || labelTotals.tubTotal || 0,
+        // Use the correct quantities
+        lidTotalLabels: isLidAndTub
+          ? labelTotals.lidQuantity
+          : labelTotals.lidQuantity,
+        tubTotalLabels: isLidAndTub ? labelTotals.tubQuantity : 0,
+        lidRemaining: isLidAndTub
+          ? Math.max(labelTotals.lidQuantity - lidUsed, 0)
+          : Math.max(labelTotals.lidQuantity - lidUsed, 0),
+        tubRemaining: isLidAndTub
+          ? Math.max(labelTotals.tubQuantity - tubUsed, 0)
+          : 0,
       });
-
-      // Compute remaining labels for LID & TUB separately
-      if (isLidAndTub) {
-        const lidUsed = entriesHistory.reduce((sum, e) => {
-          if (e.componentType === "LID") {
-            const accepted = toNumber(e.acceptedComponents);
-            return sum + accepted;
-          }
-          return sum;
-        }, 0);
-
-        const tubUsed = entriesHistory.reduce((sum, e) => {
-          if (e.componentType === "TUB") {
-            const accepted = toNumber(e.acceptedComponents);
-            return sum + accepted;
-          }
-          return sum;
-        }, 0);
-
-        setRemainingLidLabels(Math.max(labelTotals.lidTotal - lidUsed, 0));
-        setRemainingTubLabels(Math.max(labelTotals.tubTotal - tubUsed, 0));
-      } else {
-        // For single type
-        const usedLabels = entriesHistory.reduce((sum, e) => {
-          const accepted = toNumber(e.acceptedComponents);
-          return sum + accepted;
-        }, 0);
-        setRemainingLidLabels(Math.max(labelTotals.lidTotal - usedLabels, 0));
-      }
     }
   }, [entry]);
 
@@ -255,7 +408,7 @@ const ProductionDetails = () => {
 
     // Filter machine options
     const filtered = MACHINE_OPTIONS.filter((machine) =>
-      machine.toLowerCase().includes(value.toLowerCase())
+      machine.toLowerCase().includes(value.toLowerCase()),
     );
     setFilteredMachines(filtered);
     setLidMachineDropdownOpen(true);
@@ -271,7 +424,7 @@ const ProductionDetails = () => {
 
     // Filter machine options
     const filtered = MACHINE_OPTIONS.filter((machine) =>
-      machine.toLowerCase().includes(value.toLowerCase())
+      machine.toLowerCase().includes(value.toLowerCase()),
     );
     setFilteredMachines(filtered);
     setTubMachineDropdownOpen(true);
@@ -322,6 +475,8 @@ const ProductionDetails = () => {
   }, []);
 
   // Add LID production entry
+  // ProductionDetails2.jsx - Update addLidProductionEntry function
+
   const addLidProductionEntry = () => {
     if (
       !lidEntryForm.acceptedComponents ||
@@ -332,7 +487,7 @@ const ProductionDetails = () => {
       !customerForm.lidReceivedBy
     ) {
       alert(
-        "Please fill all required fields for LID (including Machine Number and Received By)"
+        "Please fill all required fields for LID (including Machine Number and Received By)",
       );
       return;
     }
@@ -362,21 +517,19 @@ const ProductionDetails = () => {
 
     const entryId = entry.id;
 
-    // Save followups
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    // Save followups - USE CORRECT STORAGE KEY
+    const storageKey = isFromRemaining
+      ? STORAGE_KEY_REMAINING_PRODUCTION
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedProduction = localStorage.getItem(storageKey);
     const allProductionData = storedProduction
       ? JSON.parse(storedProduction)
       : {};
     allProductionData[entryId] = updatedEntries;
-    localStorage.setItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
-      JSON.stringify(allProductionData)
-    );
+    localStorage.setItem(storageKey, JSON.stringify(allProductionData));
 
-    // Update remaining LID labels
-    const labelTotals = getTotalLabels(entry.orderId, entry.productId);
+    // Update remaining LID labels - Use the correct source quantity
     const lidUsed = updatedEntries.reduce((sum, e) => {
       if (e.componentType === "LID") {
         const accepted = toNumber(e.acceptedComponents);
@@ -385,7 +538,7 @@ const ProductionDetails = () => {
       return sum;
     }, 0);
 
-    const remainingLid = Math.max(labelTotals.lidTotal - lidUsed, 0);
+    const remainingLid = Math.max(lidQuantity - lidUsed, 0);
     setRemainingLidLabels(remainingLid);
     setCustomerForm((prev) => ({ ...prev, lidRemaining: remainingLid }));
 
@@ -403,6 +556,7 @@ const ProductionDetails = () => {
   };
 
   // Add TUB production entry
+  // Update addTubProductionEntry function
   const addTubProductionEntry = () => {
     if (
       !tubEntryForm.acceptedComponents ||
@@ -413,7 +567,7 @@ const ProductionDetails = () => {
       !customerForm.tubReceivedBy
     ) {
       alert(
-        "Please fill all required fields for TUB (including Machine Number and Received By)"
+        "Please fill all required fields for TUB (including Machine Number and Received By)",
       );
       return;
     }
@@ -443,21 +597,19 @@ const ProductionDetails = () => {
 
     const entryId = entry.id;
 
-    // Save followups
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    // Save followups - USE CORRECT STORAGE KEY
+    const storageKey = isFromRemaining
+      ? STORAGE_KEY_REMAINING_PRODUCTION
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedProduction = localStorage.getItem(storageKey);
     const allProductionData = storedProduction
       ? JSON.parse(storedProduction)
       : {};
     allProductionData[entryId] = updatedEntries;
-    localStorage.setItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
-      JSON.stringify(allProductionData)
-    );
+    localStorage.setItem(storageKey, JSON.stringify(allProductionData));
 
-    // Update remaining TUB labels
-    const labelTotals = getTotalLabels(entry.orderId, entry.productId);
+    // Update remaining TUB labels - Use the correct source quantity
     const tubUsed = updatedEntries.reduce((sum, e) => {
       if (e.componentType === "TUB") {
         const accepted = toNumber(e.acceptedComponents);
@@ -466,7 +618,7 @@ const ProductionDetails = () => {
       return sum;
     }, 0);
 
-    const remainingTub = Math.max(labelTotals.tubTotal - tubUsed, 0);
+    const remainingTub = Math.max(tubQuantity - tubUsed, 0);
     setRemainingTubLabels(remainingTub);
     setCustomerForm((prev) => ({ ...prev, tubRemaining: remainingTub }));
 
@@ -494,7 +646,7 @@ const ProductionDetails = () => {
       !customerForm.lidReceivedBy
     ) {
       alert(
-        "Please fill all required fields (including Machine Number and Received By)"
+        "Please fill all required fields (including Machine Number and Received By)",
       );
       return;
     }
@@ -524,27 +676,24 @@ const ProductionDetails = () => {
 
     const entryId = entry.id;
 
-    // Save followups
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    // Save followups - USE CORRECT STORAGE KEY
+    const storageKey = isFromRemaining
+      ? STORAGE_KEY_REMAINING_PRODUCTION
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedProduction = localStorage.getItem(storageKey);
     const allProductionData = storedProduction
-      ? JSON.parse(storedProduction)
+      ? JSON.parse(storedProduction) // Changed from JSON.parse(storageKey)
       : {};
     allProductionData[entryId] = updatedEntries;
-    localStorage.setItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
-      JSON.stringify(allProductionData)
-    );
-
-    // Update remaining labels
-    const labelTotals = getTotalLabels(entry.orderId, entry.productId);
+    localStorage.setItem(storageKey, JSON.stringify(allProductionData));
+    // Update remaining labels - USE CORRECT QUANTITIES
     const usedLabels = updatedEntries.reduce((sum, e) => {
       const accepted = toNumber(e.acceptedComponents);
       return sum + accepted;
     }, 0);
 
-    const remaining = Math.max(labelTotals.lidTotal - usedLabels, 0);
+    const remaining = Math.max(totalQuantity - usedLabels, 0); // Use totalQuantity instead of labelTotals.lidTotal
     setRemainingLidLabels(remaining);
     setCustomerForm((prev) => ({ ...prev, lidRemaining: remaining }));
 
@@ -584,18 +733,17 @@ const ProductionDetails = () => {
     }));
     setProductionEntries(submittedEntries);
 
-    // Save followups with submitted=true
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    // Save followups with submitted=true - USE CORRECT STORAGE KEY
+    const storageKey = isFromRemaining
+      ? STORAGE_KEY_REMAINING_PRODUCTION
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedProduction = localStorage.getItem(storageKey);
     const allProductionData = storedProduction
       ? JSON.parse(storedProduction)
       : {};
     allProductionData[entryId] = submittedEntries;
-    localStorage.setItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
-      JSON.stringify(allProductionData)
-    );
+    localStorage.setItem(storageKey, JSON.stringify(allProductionData));
 
     setIsSubmitted(true);
     alert("✅ Production details submitted successfully!");
@@ -606,28 +754,24 @@ const ProductionDetails = () => {
     if (!window.confirm("Are you sure you want to delete this entry?")) return;
 
     const entryId = entry.id;
-    const deletedEntry = productionEntries[indexToRemove];
     const updatedEntries = productionEntries.filter(
-      (_e, idx) => idx !== indexToRemove
+      (_e, idx) => idx !== indexToRemove,
     );
     setProductionEntries(updatedEntries);
 
     // Update followups storage
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    const storageKey = isFromRemaining
+      ? STORAGE_KEY_REMAINING_PRODUCTION
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedProduction = localStorage.getItem(storageKey);
     const allProductionData = storedProduction
       ? JSON.parse(storedProduction)
       : {};
     allProductionData[entryId] = updatedEntries;
-    localStorage.setItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
-      JSON.stringify(allProductionData)
-    );
+    localStorage.setItem(storageKey, JSON.stringify(allProductionData));
 
     // Recompute remaining labels
-    const labelTotals = getTotalLabels(entry.orderId, entry.productId);
-
     if (isLidAndTub) {
       const lidUsed = updatedEntries.reduce((sum, e) => {
         if (e.componentType === "LID") {
@@ -645,8 +789,8 @@ const ProductionDetails = () => {
         return sum;
       }, 0);
 
-      const remainingLid = Math.max(labelTotals.lidTotal - lidUsed, 0);
-      const remainingTub = Math.max(labelTotals.tubTotal - tubUsed, 0);
+      const remainingLid = Math.max(lidQuantity - lidUsed, 0);
+      const remainingTub = Math.max(tubQuantity - tubUsed, 0);
       setRemainingLidLabels(remainingLid);
       setRemainingTubLabels(remainingTub);
       setCustomerForm((prev) => ({
@@ -659,7 +803,7 @@ const ProductionDetails = () => {
         const accepted = toNumber(e.acceptedComponents);
         return sum + accepted;
       }, 0);
-      const remaining = Math.max(labelTotals.lidTotal - usedLabels, 0);
+      const remaining = Math.max(totalQuantity - usedLabels, 0);
       setRemainingLidLabels(remaining);
       setCustomerForm((prev) => ({ ...prev, lidRemaining: remaining }));
     }
@@ -826,11 +970,28 @@ const ProductionDetails = () => {
                 <div>
                   <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
                     Production Quantity
+                    {entry?.imlType && (
+                      <span className="ml-2 text-[.7vw] text-gray-500">
+                        ({entry.imlType})
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
-                    name="lidTotalLabels"
-                    value={formatNumber(customerForm.lidTotalLabels)}
+                    name="productionQuantity"
+                    value={(() => {
+                      // Determine which quantity to show based on IML type
+                      if (entry?.imlType === "TUB") {
+                        return formatNumber(customerForm.tubTotalLabels || 0);
+                      } else if (entry?.imlType === "LID") {
+                        return formatNumber(customerForm.lidTotalLabels || 0);
+                      } else {
+                        // For single/combined/other types, show the larger of the two or total
+                        const lid = Number(customerForm.lidTotalLabels || 0);
+                        const tub = Number(customerForm.tubTotalLabels || 0);
+                        return formatNumber(Math.max(lid, tub, totalQuantity));
+                      }
+                    })()}
                     onChange={handleCustomerChange}
                     disabled
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800"
@@ -1476,6 +1637,7 @@ const ProductionDetails = () => {
                         Component
                       </th>
                     )}
+
                     <th className="border border-amber-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold text-amber-900">
                       Date
                     </th>
@@ -1537,6 +1699,7 @@ const ProductionDetails = () => {
                             </span>
                           </td>
                         )}
+
                         <td className="border border-amber-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
                           {entry.date}
                         </td>
@@ -1612,8 +1775,8 @@ const ProductionDetails = () => {
                   ? "✓ Submit Production"
                   : "Save"
                 : remainingLidLabels === 0
-                ? "✓ Submit Production"
-                : "Save"}
+                  ? "✓ Submit Production"
+                  : "Save"}
             </button>
           </div>
         </div>

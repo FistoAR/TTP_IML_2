@@ -23,28 +23,82 @@ const InventoryManagement = () => {
   const [expandedOrders, setExpandedOrders] = useState({});
 
   // Load inventory data from production
+  const loadAllProductionData = () => {
+    console.log("🔄 Loading ALL production data for inventory...");
+
+    // Load from both sources
+    const mainProductionData = localStorage.getItem(
+      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
+    );
+    const remainingProductionData = localStorage.getItem(
+      "iml_remaining_production_followups",
+    );
+
+    const allProductionEntries = {};
+
+    // Process main production followups
+    if (mainProductionData) {
+      try {
+        const mainData = JSON.parse(mainProductionData);
+        Object.entries(mainData).forEach(([key, entries]) => {
+          if (!allProductionEntries[key]) {
+            allProductionEntries[key] = [];
+          }
+          // Filter only submitted entries
+          const submittedEntries = entries.filter(
+            (entry) => entry.submitted === true,
+          );
+          allProductionEntries[key].push(...submittedEntries);
+        });
+      } catch (error) {
+        console.error("Error parsing main production data:", error);
+      }
+    }
+
+    // Process remaining production followups
+    if (remainingProductionData) {
+      try {
+        const remainingData = JSON.parse(remainingProductionData);
+        Object.entries(remainingData).forEach(([key, entries]) => {
+          if (!allProductionEntries[key]) {
+            allProductionEntries[key] = [];
+          }
+          // Filter only submitted entries
+          const submittedEntries = entries.filter(
+            (entry) => entry.submitted === true,
+          );
+          allProductionEntries[key].push(...submittedEntries);
+        });
+      } catch (error) {
+        console.error("Error parsing remaining production data:", error);
+      }
+    }
+
+    console.log(
+      "Total production entries loaded:",
+      Object.keys(allProductionEntries).length,
+    );
+    return allProductionEntries;
+  };
+
+  // Then update the loadInventoryData function:
   const loadInventoryData = () => {
     console.log("🔄 Loading inventory data...");
 
     const storedOrders = localStorage.getItem(STORAGE_KEY_ORDERS);
-    const storedProduction = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS,
+    const allVerified = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_INVENTORY_FOLLOWUPS) || "{}",
     );
 
-    const storedVerified = localStorage.getItem(
-      STORAGE_KEY_INVENTORY_FOLLOWUPS,
-    );
-    const allVerified = storedVerified ? JSON.parse(storedVerified) : {};
-
-    if (!storedOrders || !storedProduction) {
-      console.warn("⚠️ No orders or production data found");
+    if (!storedOrders) {
+      console.warn("⚠️ No orders found");
       setInventoryData([]);
       return;
     }
 
     try {
       const allOrders = JSON.parse(storedOrders);
-      const productionData = JSON.parse(storedProduction);
+      const allProductionEntries = loadAllProductionData(); // Get ALL production entries
 
       const inventoryItems = [];
 
@@ -54,57 +108,57 @@ const InventoryManagement = () => {
           order.products?.filter((product) => product.moveToPurchase) || [];
 
         if (orderProducts.length > 0) {
-          // Get all production entries for this order
-          const orderProductionEntries = {};
           let hasProductionData = false;
           let totalOrderProduced = 0;
+          const orderProductionEntries = {};
 
           orderProducts.forEach((product) => {
             const key = `${order.id}_${product.id}`;
-            const productionEntries = productionData[key];
+            const productionEntries = allProductionEntries[key] || [];
 
-            if (productionEntries && productionEntries.length > 0) {
+            if (productionEntries.length > 0) {
               hasProductionData = true;
 
-              // Calculate total produced (accepted components)
-              const totalProduced = productionEntries.reduce((sum, entry) => {
+              // Calculate total produced (sum of all accepted components from ALL sources)
+              let totalProduced = 0;
+              let lidProduced = 0;
+              let tubProduced = 0;
+
+              productionEntries.forEach((entry) => {
                 const accepted = parseInt(entry.acceptedComponents) || 0;
-                return sum + accepted;
-              }, 0);
+                const componentType = entry.componentType;
+
+                // For LID & TUB types, track separately
+                if (product.imlType === "LID & TUB") {
+                  if (componentType === "LID") {
+                    lidProduced += accepted;
+                  } else if (componentType === "TUB") {
+                    tubProduced += accepted;
+                  }
+                }
+                totalProduced += accepted;
+              });
+
+              // For LID & TUB, combine both components
+              if (product.imlType === "LID & TUB") {
+                totalProduced = lidProduced + tubProduced;
+              }
 
               totalOrderProduced += totalProduced;
 
-              // Get label quantity info to check remaining labels
-              const storedLabelQty = localStorage.getItem(
-                STORAGE_KEY_LABEL_QTY,
-              );
-              let remainingLabels = 0;
-              let isComplete = false;
-
-              if (storedLabelQty) {
-                const labelData = JSON.parse(storedLabelQty);
-                const labelInfo = labelData[key];
-
-                if (labelInfo) {
-                  const totalLabels = labelInfo.receivedQuantity || 0;
-                  // Calculate used labels from production
-                  const usedLabels = productionEntries.reduce((sum, entry) => {
-                    const accepted = parseInt(entry.acceptedComponents) || 0;
-                    const rejected = parseInt(entry.rejectedComponents) || 0;
-                    const wastage = parseInt(entry.labelWastage) || 0;
-                    return sum + accepted + rejected + wastage;
-                  }, 0);
-
-                  remainingLabels = Math.max(totalLabels - usedLabels, 0);
-                  isComplete = remainingLabels === 0;
-                }
-              }
-
+              // Get verification data
               const verifiedForOrder = allVerified[order.id] || [];
-              const verifiedQty = verifiedForOrder
-                .filter((v) => v.productId === product.id)
-                .reduce((sum, v) => sum + (parseInt(v.finalQty) || 0), 0);
+              const verifiedForProduct = verifiedForOrder.filter(
+                (v) => v.productId === product.id,
+              );
 
+              // Calculate total verified quantity
+              const verifiedQty = verifiedForProduct.reduce(
+                (sum, v) => sum + (parseInt(v.finalQty) || 0),
+                0,
+              );
+
+              // Calculate remaining quantity (Produced - Verified)
               const remainingQty = Math.max(totalProduced - verifiedQty, 0);
 
               orderProductionEntries[key] = {
@@ -114,15 +168,14 @@ const InventoryManagement = () => {
                 size: product.size,
                 imlName: product.imlName,
                 imlType: product.imlType,
-
-                producedQuantity: totalProduced,
+                producedQuantity: totalProduced, // This is cumulative from ALL sources
                 verifiedQuantity: verifiedQty,
-                remainingQuantity: remainingQty, // ✅ THIS IS WHAT WE NEED
-
-                remainingLabels: remainingLabels,
+                remainingQuantity: remainingQty,
                 status: remainingQty === 0 ? "Complete" : "In Production",
-
-                productionEntries,
+                productionSources: productionEntries.length, // Track how many production entries
+                isFromRemaining: productionEntries.some(
+                  (entry) => entry.isFromRemaining,
+                ),
               };
             }
           });
@@ -651,7 +704,9 @@ const InventoryManagement = () => {
                                           )}
                                         </td>
                                         <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-bold text-green-700">
-                                          {product.remainingQuantity.toLocaleString("en-IN")}
+                                          {product.remainingQuantity.toLocaleString(
+                                            "en-IN",
+                                          )}
                                         </td>
                                         <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center">
                                           {product.status === "Complete" ? (

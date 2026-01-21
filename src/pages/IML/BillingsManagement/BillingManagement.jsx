@@ -381,12 +381,7 @@ const BillingManagement = () => {
                                                 <th className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-left text-[0.85vw] font-semibold">
                                                   Quantity
                                                 </th>
-                                                <th className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-left text-[0.85vw] font-semibold">
-                                                  Rate (₹)
-                                                </th>
-                                                <th className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-left text-[0.85vw] font-semibold">
-                                                  Amount (₹)
-                                                </th>
+                                                
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -410,12 +405,7 @@ const BillingManagement = () => {
                                                   <td className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-[0.85vw] font-semibold text-blue-600">
                                                     {product.quantity?.toLocaleString() || 0}
                                                   </td>
-                                                  <td className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-[0.85vw] font-semibold text-green-600">
-                                                    {parseFloat(product.rate || 0).toLocaleString()}
-                                                  </td>
-                                                  <td className="border border-gray-300 px-[0.8vw] py-[0.4vw] text-[0.85vw] font-bold text-purple-600">
-                                                    {parseFloat(product.amount || 0).toLocaleString()}
-                                                  </td>
+                                                  
                                                 </tr>
                                               ))}
                                               

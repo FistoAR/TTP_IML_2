@@ -7,6 +7,9 @@ const DATA_VERSION = "2.0"; // Increment this when structure changes
 const STORAGE_KEY = "imlorders";
 const VERSION_KEY = "imlorders_version";
 
+const STORAGE_KEY_PRODUCTION_ALLOCATION = "iml_production_allocation";
+const STORAGE_KEY_REMAINING_HISTORY = "iml_remaining_history";
+
 // Product size options for initial expansion
 const PRODUCT_SIZE_OPTIONS = {
   Round: ["120ml", "250ml", "300ml", "500ml", "1000ml"],
@@ -33,14 +36,30 @@ export default function OrdersManagement2() {
   const [viewMode, setViewMode] = useState("all"); // "all" or "remaining"
   const [paymentModalOrder, setPaymentModalOrder] = useState(null);
 
-   const [previewModal, setPreviewModal] = useState({
-      isOpen: false,
-      type: null,
-      path: null,
-      name: null,
-    });
-  
-    const previewModalRef = useRef(null);
+  const [previewModal, setPreviewModal] = useState({
+    isOpen: false,
+    type: null,
+    path: null,
+    name: null,
+  });
+
+  const previewModalRef = useRef(null);
+
+  const [productionModal, setProductionModal] = useState({
+    isOpen: false,
+    order: null,
+    product: null,
+    remainingQty: 0,
+    sendToProductionQty: "",
+    finalRemainingQty: 0,
+  });
+
+  const [productionHistoryModal, setProductionHistoryModal] = useState({
+    isOpen: false,
+    order: null,
+    product: null,
+    history: [],
+  });
 
   useEffect(() => {
     const storedVersion = localStorage.getItem(VERSION_KEY);
@@ -48,7 +67,7 @@ export default function OrdersManagement2() {
     if (storedVersion !== DATA_VERSION) {
       console.log(`Data version mismatch. Clearing old data...`);
       console.log(
-        `Old version: ${storedVersion}, New version: ${DATA_VERSION}`
+        `Old version: ${storedVersion}, New version: ${DATA_VERSION}`,
       );
 
       // Clear old data
@@ -59,7 +78,7 @@ export default function OrdersManagement2() {
       initializeDummyData();
 
       alert(
-        `Data structure updated to version ${DATA_VERSION}. Old data has been cleared.`
+        `Data structure updated to version ${DATA_VERSION}. Old data has been cleared.`,
       );
     }
   }, []);
@@ -534,7 +553,7 @@ export default function OrdersManagement2() {
       setOrders(orders.filter((order) => order.id !== orderId));
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify(orders.filter((order) => order.id !== orderId))
+        JSON.stringify(orders.filter((order) => order.id !== orderId)),
       );
     }
   };
@@ -581,6 +600,47 @@ export default function OrdersManagement2() {
     }
   };
 
+  // handle move to production
+  const handleMoveToProduction = (order, product) => {
+    const remaining = calculateRemainingLabels(product);
+
+    if (remaining <= 0) {
+      alert("No remaining labels to allocate");
+      return;
+    }
+
+    // Get allocation history for this product
+    const orderKey = `${order.id}_${product.id}`;
+    const existingAllocations = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_PRODUCTION_ALLOCATION) || "{}",
+    );
+    const history = existingAllocations[orderKey] || [];
+
+    setProductionModal({
+      isOpen: true,
+      order: order,
+      product: product,
+      remainingQty: remaining,
+      sendToProductionQty: "",
+      finalRemainingQty: remaining,
+    });
+  };
+
+  const handleViewHistory = (order, product) => {
+    const orderKey = `${order.id}_${product.id}`;
+    const existingAllocations = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_PRODUCTION_ALLOCATION) || "{}",
+    );
+    const history = existingAllocations[orderKey] || [];
+
+    setProductionHistoryModal({
+      isOpen: true,
+      order: order,
+      product: product,
+      history: history,
+    });
+  };
+
   // Function to calculate remaining labels for a product
   const calculateRemainingLabels = (product) => {
     console.log("🔍 Checking product:", product.productName, product);
@@ -594,7 +654,7 @@ export default function OrdersManagement2() {
       console.log(
         `  LID: ${lidOrdered} ordered - ${lidProduced} produced = ${
           lidOrdered - lidProduced
-        }`
+        }`,
       );
     }
 
@@ -605,7 +665,7 @@ export default function OrdersManagement2() {
       console.log(
         `  TUB: ${tubOrdered} ordered - ${tubProduced} produced = ${
           tubOrdered - tubProduced
-        }`
+        }`,
       );
     }
 
@@ -613,7 +673,7 @@ export default function OrdersManagement2() {
     return remaining;
   };
 
-    const PreviewModal = () => {
+  const PreviewModal = () => {
     if (!previewModal.isOpen) return null;
 
     return (
@@ -686,6 +746,577 @@ export default function OrdersManagement2() {
     );
   };
 
+  // production modal
+  const ProductionAllocationModal = () => {
+    if (
+      !productionModal.isOpen ||
+      !productionModal.order ||
+      !productionModal.product
+    )
+      return null;
+
+    const { order, product, remainingQty, sendToProductionQty } =
+      productionModal;
+
+    // FIXED: Calculate current remaining after previous allocations
+    const calculateCurrentRemaining = () => {
+      const orderKey = `${order.id}_${product.id}`;
+      const existingAllocations = JSON.parse(
+        localStorage.getItem(STORAGE_KEY_PRODUCTION_ALLOCATION) || "{}",
+      );
+
+      const allocations = existingAllocations[orderKey] || [];
+      const totalAlreadyAllocated = allocations.reduce(
+        (sum, alloc) => sum + (alloc.allocatedQty || 0),
+        0,
+      );
+
+      // Current remaining = original remaining - already allocated
+      return Math.max(remainingQty - totalAlreadyAllocated, 0);
+    };
+
+    const currentRemainingQty = calculateCurrentRemaining();
+
+    const handleSendToProduction = () => {
+      const qty = parseInt(sendToProductionQty) || 0;
+
+      if (qty <= 0) {
+        alert("Please enter a valid quantity");
+        return;
+      }
+
+      if (qty > currentRemainingQty) {
+        alert(`Cannot send more than ${currentRemainingQty} labels`);
+        return;
+      }
+
+      // Generate unique ID for this allocation
+      const allocationId = `alloc_${Date.now()}`;
+
+      // Load existing allocations
+      const existingAllocations = JSON.parse(
+        localStorage.getItem(STORAGE_KEY_PRODUCTION_ALLOCATION) || "{}",
+      );
+
+      const orderKey = `${order.id}_${product.id}`;
+
+      if (!existingAllocations[orderKey]) {
+        existingAllocations[orderKey] = [];
+      }
+
+      // Calculate remaining after this allocation
+      const remainingAfter = currentRemainingQty - qty;
+
+      // Add new allocation
+      const allocation = {
+        id: allocationId,
+        timestamp: new Date().toISOString(),
+        orderId: order.id,
+        productId: product.id,
+        orderNumber: order.orderNumber,
+        company: order.contact.company,
+        imlName: product.imlName,
+        productName: product.productName,
+        size: product.size,
+        imlType: product.imlType,
+        currentRemaining: currentRemainingQty, // NEW: Store current remaining
+        allocatedQty: qty,
+        remainingAfter: remainingAfter,
+        type: "remaining_allocation",
+      };
+
+      existingAllocations[orderKey].push(allocation);
+
+      // Save to localStorage
+      localStorage.setItem(
+        STORAGE_KEY_PRODUCTION_ALLOCATION,
+        JSON.stringify(existingAllocations),
+      );
+
+      // Update order's remaining quantity in production records
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            products: o.products.map((p) => {
+              if (p.id === product.id) {
+                // Store production allocation info
+                const prodAllocations = p.productionAllocations || [];
+                return {
+                  ...p,
+                  productionAllocations: [...prodAllocations, allocation],
+                  remainingAfterAllocation: remainingAfter,
+                };
+              }
+              return p;
+            }),
+          };
+        }
+        return o;
+      });
+
+      setOrders(updatedOrders);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+
+      // Close modal and refresh
+      setProductionModal({
+        isOpen: false,
+        order: null,
+        product: null,
+        remainingQty: 0,
+        sendToProductionQty: "",
+        finalRemainingQty: 0,
+      });
+
+      alert(`${qty} labels allocated to production successfully!`);
+    };
+
+    const handleClose = () => {
+      setProductionModal({
+        isOpen: false,
+        order: null,
+        product: null,
+        remainingQty: 0,
+        sendToProductionQty: "",
+        finalRemainingQty: 0,
+      });
+    };
+
+    // FIXED: Updated handleQtyChange
+    const handleQtyChange = (e) => {
+      const inputValue = e.target.value;
+
+      // Allow empty input
+      if (inputValue === "") {
+        setProductionModal((prev) => ({
+          ...prev,
+          sendToProductionQty: "",
+          finalRemainingQty: currentRemainingQty, // Use currentRemainingQty
+        }));
+        return;
+      }
+
+      // Only allow numbers
+      const numericValue = inputValue.replace(/[^0-9]/g, "");
+
+      if (numericValue === "") {
+        setProductionModal((prev) => ({
+          ...prev,
+          sendToProductionQty: "",
+          finalRemainingQty: currentRemainingQty,
+        }));
+        return;
+      }
+
+      const value = parseInt(numericValue, 10);
+
+      if (isNaN(value)) {
+        setProductionModal((prev) => ({
+          ...prev,
+          sendToProductionQty: "",
+          finalRemainingQty: currentRemainingQty,
+        }));
+        return;
+      }
+
+      // Calculate final remaining
+      const finalRemaining = Math.max(currentRemainingQty - value, 0);
+
+      // If value exceeds remaining, cap it at currentRemainingQty
+      const displayValue =
+        value > currentRemainingQty ? currentRemainingQty : value;
+      const displayRemaining = value > currentRemainingQty ? 0 : finalRemaining;
+
+      setProductionModal((prev) => ({
+        ...prev,
+        sendToProductionQty: displayValue.toString(),
+        finalRemainingQty: displayRemaining,
+      }));
+    };
+
+    // FIXED: Calculate order and produced quantities correctly
+    const calculateOrderQuantity = () => {
+      let orderQty = 0;
+      if (product.imlType === "LID" || product.imlType === "LID TUB") {
+        orderQty += parseInt(product.lidLabelQty) || 0;
+      }
+      if (product.imlType === "TUB" || product.imlType === "LID TUB") {
+        orderQty += parseInt(product.tubLabelQty) || 0;
+      }
+      return orderQty;
+    };
+
+    const calculateProducedQuantity = () => {
+      let producedQty = 0;
+      if (product.imlType === "LID" || product.imlType === "LID TUB") {
+        producedQty += parseInt(product.lidProductionQty) || 0;
+      }
+      if (product.imlType === "TUB" || product.imlType === "LID TUB") {
+        producedQty += parseInt(product.tubProductionQty) || 0;
+      }
+      return producedQty;
+    };
+
+    return (
+      <div
+        className="fixed inset-0 bg-[#000000ad] bg-opacity-70 z-50000 flex items-center justify-center p-4"
+        onClick={handleClose}
+      >
+        <div
+          className="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+            <h2 className="text-[1.25vw] font-semibold">
+              Allocate to Production
+            </h2>
+            <button
+              onClick={handleClose}
+              className="text-white hover:bg-white hover:text-blue-600 rounded-full w-8 h-8 flex items-center justify-center text-xl transition-all cursor-pointer"
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Modal Content */}
+          <div className="p-6">
+            {/* Order Details */}
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                Order Details
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Company Name
+                  </label>
+                  <p className="text-base font-semibold">
+                    {order.contact.company}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Order Number
+                  </label>
+                  <p className="text-base font-semibold">{order.orderNumber}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Product Name
+                  </label>
+                  <p className="text-base font-semibold">
+                    {product.productName}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Size
+                  </label>
+                  <p className="text-base font-semibold">{product.size}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    IML Name
+                  </label>
+                  <p className="text-base font-semibold">{product.imlName}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    IML Type
+                  </label>
+                  <p className="text-base font-semibold">{product.imlType}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quantity Information - UPDATED with 4 columns */}
+            <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                Quantity Information
+              </h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Order Quantity
+                  </label>
+                  <p className="text-xl font-bold text-blue-600">
+                    {calculateOrderQuantity().toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Produced Quantity
+                  </label>
+                  <p className="text-xl font-bold text-orange-600">
+                    {calculateProducedQuantity().toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Current Remaining
+                  </label>
+                  <p className="text-xl font-bold text-purple-600">
+                    {currentRemainingQty.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    (After previous allocations)
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600">
+                    Original Remaining
+                  </label>
+                  <p className="text-xl font-bold text-red-600">
+                    {remainingQty.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Allocation Form */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                Allocation Details
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Send to Production Quantity *
+                  </label>
+                  <input
+                    type="text"
+                    value={sendToProductionQty}
+                    onChange={handleQtyChange}
+                    onKeyDown={(e) => {
+                      // Allow only numbers and control keys
+                      if (
+                        !/[\d\b\t\n]|Arrow|Delete|Backspace|Enter/.test(
+                          e.key,
+                        ) &&
+                        !e.ctrlKey &&
+                        !e.metaKey
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                    placeholder="Enter quantity"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Final Remaining After Allocation
+                  </label>
+                  <input
+                    type="text"
+                    value={currentRemainingQty.toLocaleString()}
+                    readOnly
+                    className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    = Current Remaining ({currentRemainingQty.toLocaleString()})
+                    - Allocated
+                  </p>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSendToProduction}
+                    disabled={
+                      !sendToProductionQty || parseInt(sendToProductionQty) <= 0
+                    }
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    type="button"
+                  >
+                    Allocate to Production
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                * Maximum: {currentRemainingQty.toLocaleString()} labels
+                available
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // production history modal
+  const ProductionHistoryModal = () => {
+    if (
+      !productionHistoryModal.isOpen ||
+      !productionHistoryModal.order ||
+      !productionHistoryModal.product
+    )
+      return null;
+
+    const { order, product, history } = productionHistoryModal;
+
+    const handleClose = () => {
+      setProductionHistoryModal({
+        isOpen: false,
+        order: null,
+        product: null,
+        history: [],
+      });
+    };
+
+    // Calculate totals
+    const totalAllocated = history.reduce(
+      (sum, item) => sum + (item.allocatedQty || 0),
+      0,
+    );
+    const currentRemaining =
+      product.remainingAfterAllocation || calculateRemainingLabels(product);
+
+    return (
+      <div className="fixed inset-0 bg-[#000000ad] bg-opacity-70 z-50000 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg max-w-6xl w-full max-h-[80vh] overflow-y-auto">
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+            <h2 className="text-[1.25vw] font-semibold">
+              Production Allocation History
+            </h2>
+            <button
+              onClick={handleClose}
+              className="text-white hover:bg-white hover:text-purple-600 rounded-full w-8 h-8 flex items-center justify-center text-xl transition-all cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Modal Content */}
+          <div className="p-6">
+            {/* Summary Card */}
+            <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                Allocation Summary
+              </h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-600">
+                    Total Allocated
+                  </p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {totalAllocated}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-600">
+                    Current Remaining
+                  </p>
+                  <p className="text-2xl font-bold text-red-600">
+                    {currentRemaining}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-600">Product</p>
+                  <p className="text-lg font-semibold">{product.productName}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-600">Company</p>
+                  <p className="text-lg font-semibold">
+                    {order.contact.company}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* History Table */}
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Date & Time
+                    </th>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Allocation ID
+                    </th>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Remaining Before
+                    </th>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Allocated Qty
+                    </th>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Remaining After
+                    </th>
+                    <th className="border border-gray-300 px-4 py-3 text-left font-semibold">
+                      Type
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="6"
+                        className="border border-gray-300 px-4 py-8 text-center text-gray-500"
+                      >
+                        No allocation history found
+                      </td>
+                    </tr>
+                  ) : (
+                    history.map((item, index) => (
+                      <tr key={item.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-4 py-3">
+                          {new Date(item.timestamp).toLocaleString("en-IN")}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 font-mono text-sm">
+                          {item.id}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          {item.remainingBefore}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-600">
+                          {item.allocatedQty}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          {item.remainingAfter}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                            {item.type === "remaining_allocation"
+                              ? "Remaining Allocation"
+                              : "Main Order"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {history.length > 0 && (
+                  <tfoot className="bg-gray-50">
+                    <tr>
+                      <td
+                        colSpan="3"
+                        className="border border-gray-300 px-4 py-3 text-right font-semibold"
+                      >
+                        Total Allocated:
+                      </td>
+                      <td className="border border-gray-300 px-4 py-3 text-center font-bold text-green-700">
+                        {totalAllocated}
+                      </td>
+                      <td
+                        colSpan="2"
+                        className="border border-gray-300 px-4 py-3"
+                      ></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Check if order has remaining labels
   const hasRemainingLabels = (order) => {
     console.log("📦 Checking order:", order.orderNumber || order.id, order);
@@ -701,7 +1332,7 @@ export default function OrdersManagement2() {
     });
 
     console.log(
-      `  Result: ${hasRemaining ? "✅ HAS" : "❌ NO"} remaining labels`
+      `  Result: ${hasRemaining ? "✅ HAS" : "❌ NO"} remaining labels`,
     );
     return hasRemaining;
   };
@@ -725,11 +1356,11 @@ export default function OrdersManagement2() {
               createdAt: isValidDate(order.createdAt)
                 ? order.createdAt
                 : isValidDate(editingOrder.createdAt)
-                ? editingOrder.createdAt
-                : new Date().toISOString(),
+                  ? editingOrder.createdAt
+                  : new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
-          : order
+          : order,
       );
       setOrders(updatedOrders);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
@@ -880,7 +1511,7 @@ export default function OrdersManagement2() {
             order.contact.phone.toLowerCase().includes(searchLower) ||
             // NEW: Search in product IML names
             order.products?.some((product) =>
-              product.imlName?.toLowerCase().includes(searchLower)
+              product.imlName?.toLowerCase().includes(searchLower),
             );
         }
 
@@ -893,7 +1524,7 @@ export default function OrdersManagement2() {
         let matchesProduct = true;
         if (selectedProduct) {
           matchesProduct = order.products?.some(
-            (product) => product.productName === selectedProduct
+            (product) => product.productName === selectedProduct,
           );
         }
 
@@ -903,7 +1534,7 @@ export default function OrdersManagement2() {
           matchesSize = order.products?.some(
             (product) =>
               product.productName === selectedProduct &&
-              product.size === selectedSize
+              product.size === selectedSize,
           );
         }
 
@@ -941,7 +1572,7 @@ export default function OrdersManagement2() {
 
     // you can change the rule here if needed (e.g., prioritize in-progress over pending)
     const statuses = order.products.map((p) =>
-      (p.designStatus || "pending").toLowerCase()
+      (p.designStatus || "pending").toLowerCase(),
     );
 
     if (statuses.includes("in-progress")) return "in-progress";
@@ -963,13 +1594,13 @@ export default function OrdersManagement2() {
 
     // Artwork status counts (per ORDER, using normalized status)
     artworkPending: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "pending"
+      (order) => getArtworkStatusForOrder(order) === "pending",
     ).length,
     artworkInProgress: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "in-progress"
+      (order) => getArtworkStatusForOrder(order) === "in-progress",
     ).length,
     artworkApproved: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "approved"
+      (order) => getArtworkStatusForOrder(order) === "approved",
     ).length,
   };
 
@@ -1014,7 +1645,7 @@ export default function OrdersManagement2() {
       if (order.orderEstimate?.estimatedValue) {
         console.log(
           "Found estimatedValue in orderEstimate.estimatedValue:",
-          order.orderEstimate.estimatedValue
+          order.orderEstimate.estimatedValue,
         );
         return parseFloat(order.orderEstimate.estimatedValue);
       }
@@ -1027,7 +1658,7 @@ export default function OrdersManagement2() {
       ) {
         console.log(
           "Found estimatedValue in payment[0].totalEstimated:",
-          order.payment[0].totalEstimated
+          order.payment[0].totalEstimated,
         );
         return parseFloat(order.payment[0].totalEstimated);
       }
@@ -1040,7 +1671,7 @@ export default function OrdersManagement2() {
       ) {
         console.log(
           "Found estimatedValue in payment.totalEstimated:",
-          order.payment.totalEstimated
+          order.payment.totalEstimated,
         );
         return parseFloat(order.payment.totalEstimated);
       }
@@ -1105,7 +1736,7 @@ export default function OrdersManagement2() {
       alert(
         bulkPayment.paymentType === "advance"
           ? "Payment recorded successfully!"
-          : "PO recorded successfully!"
+          : "PO recorded successfully!",
       );
 
       // OPTION 1: Reset form and keep modal open with updated data
@@ -1125,7 +1756,7 @@ export default function OrdersManagement2() {
       if (!window.confirm("Delete this payment record?")) return;
 
       const updatedRecords = existingPaymentRecords.filter(
-        (_, i) => i !== index
+        (_, i) => i !== index,
       );
       const updatedOrder = {
         ...order,
@@ -1502,7 +2133,7 @@ export default function OrdersManagement2() {
                               {Math.max(
                                 totals.balance -
                                   parseFloat(bulkPayment.amount || 0),
-                                0
+                                0,
                               ).toFixed(2)}
                             </span>
                           </div>
@@ -1571,7 +2202,7 @@ export default function OrdersManagement2() {
                                 year: "numeric",
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              }
+                              },
                             )}
                           </td>
                           <td className="border border-gray-300 p-[0.75vw]">
@@ -1697,7 +2328,7 @@ export default function OrdersManagement2() {
     const updatedOrders = orders.map((o) =>
       o.id === updatedOrder.id
         ? { ...updatedOrder, updatedAt: new Date().toISOString() }
-        : o
+        : o,
     );
     setOrders(updatedOrders);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
@@ -2136,6 +2767,12 @@ export default function OrdersManagement2() {
                                                 <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                                                   Remaining
                                                 </th>
+                                                <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                                                  Allocated to Production
+                                                </th>
+                                                <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                                                  Current Remaining
+                                                </th>
                                               </>
                                             ) : (
                                               <>
@@ -2165,7 +2802,7 @@ export default function OrdersManagement2() {
                                               // Calculate values for this product
                                               const remaining =
                                                 calculateRemainingLabels(
-                                                  product
+                                                  product,
                                                 );
 
                                               // Calculate total ordered and produced
@@ -2173,25 +2810,25 @@ export default function OrdersManagement2() {
                                                 product.imlType === "LID" ||
                                                 product.imlType === "LID TUB"
                                                   ? parseInt(
-                                                      product.lidLabelQty
+                                                      product.lidLabelQty,
                                                     ) || 0
                                                   : product.imlType === "TUB"
-                                                  ? parseInt(
-                                                      product.tubLabelQty
-                                                    ) || 0
-                                                  : 0;
+                                                    ? parseInt(
+                                                        product.tubLabelQty,
+                                                      ) || 0
+                                                    : 0;
 
                                               const totalProduced =
                                                 product.imlType === "LID" ||
                                                 product.imlType === "LID TUB"
                                                   ? parseInt(
-                                                      product.lidProductionQty
+                                                      product.lidProductionQty,
                                                     ) || 0
                                                   : product.imlType === "TUB"
-                                                  ? parseInt(
-                                                      product.tubProductionQty
-                                                    ) || 0
-                                                  : 0;
+                                                    ? parseInt(
+                                                        product.tubProductionQty,
+                                                      ) || 0
+                                                    : 0;
 
                                               return (
                                                 <tr
@@ -2238,6 +2875,68 @@ export default function OrdersManagement2() {
                                                           ? `${remaining.toLocaleString()}`
                                                           : "-"}
                                                       </td>
+                                                      <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-bold text-green-600">
+                                                        {(() => {
+                                                          const orderKey = `${order.id}_${product.id}`;
+                                                          const existingAllocations =
+                                                            JSON.parse(
+                                                              localStorage.getItem(
+                                                                STORAGE_KEY_PRODUCTION_ALLOCATION,
+                                                              ) || "{}",
+                                                            );
+                                                          const allocations =
+                                                            existingAllocations[
+                                                              orderKey
+                                                            ] || [];
+                                                          const totalAllocated =
+                                                            allocations.reduce(
+                                                              (sum, alloc) =>
+                                                                sum +
+                                                                (alloc.allocatedQty ||
+                                                                  0),
+                                                              0,
+                                                            );
+                                                          return totalAllocated >
+                                                            0
+                                                            ? totalAllocated.toLocaleString()
+                                                            : "-";
+                                                        })()}
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-bold text-red-600">
+                                                        {(() => {
+                                                          const remaining =
+                                                            calculateRemainingLabels(
+                                                              product,
+                                                            );
+                                                          const orderKey = `${order.id}_${product.id}`;
+                                                          const existingAllocations =
+                                                            JSON.parse(
+                                                              localStorage.getItem(
+                                                                STORAGE_KEY_PRODUCTION_ALLOCATION,
+                                                              ) || "{}",
+                                                            );
+                                                          const allocations =
+                                                            existingAllocations[
+                                                              orderKey
+                                                            ] || [];
+                                                          const totalAllocated =
+                                                            allocations.reduce(
+                                                              (sum, alloc) =>
+                                                                sum +
+                                                                (alloc.allocatedQty ||
+                                                                  0),
+                                                              0,
+                                                            );
+                                                          return remaining -
+                                                            totalAllocated >
+                                                            0
+                                                            ? (
+                                                                remaining -
+                                                                totalAllocated
+                                                              ).toLocaleString()
+                                                            : "0";
+                                                        })()}
+                                                      </td>
                                                     </>
                                                   ) : (
                                                     <>
@@ -2265,9 +2964,9 @@ export default function OrdersManagement2() {
                                                         status === "approved"
                                                           ? "bg-green-100 text-green-700"
                                                           : status ===
-                                                            "in-progress"
-                                                          ? "bg-yellow-100 text-yellow-700"
-                                                          : "bg-orange-100 text-orange-700";
+                                                              "in-progress"
+                                                            ? "bg-yellow-100 text-yellow-700"
+                                                            : "bg-orange-100 text-orange-700";
                                                       return (
                                                         <span
                                                           className={`inline-block px-[1vw] py-[.3vw] rounded-full text-[.85vw] font-semibold ${colorClasses}`}
@@ -2281,23 +2980,36 @@ export default function OrdersManagement2() {
                                                     })()}
                                                   </td>
                                                   {viewMode === "remaining" && (
-                                                    <td className="border border-gray-300 px-1.25vw py-.75vw text-center">
-                                                      <button
-                                                        onClick={() =>
-                                                          handleMoveToProduction(
-                                                            order,
-                                                            product
-                                                          )
-                                                        }
-                                                        className="px-[1vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.8vw] font-medium transition-all"
-                                                      >
-                                                        Move to Production
-                                                      </button>
+                                                    <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center">
+                                                      <div className="flex gap-2 items-center">
+                                                        <button
+                                                          onClick={() =>
+                                                            handleMoveToProduction(
+                                                              order,
+                                                              product,
+                                                            )
+                                                          }
+                                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
+                                                        >
+                                                          Move to Production
+                                                        </button>
+                                                        <button
+                                                          onClick={() =>
+                                                            handleViewHistory(
+                                                              order,
+                                                              product,
+                                                            )
+                                                          }
+                                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.75vw] font-medium transition-all w-full"
+                                                        >
+                                                          View History
+                                                        </button>
+                                                      </div>
                                                     </td>
                                                   )}
                                                 </tr>
                                               );
-                                            }
+                                            },
                                           )}
                                         </tbody>
                                       </table>
@@ -2315,7 +3027,7 @@ export default function OrdersManagement2() {
                       </div>
                     )}
                   </div>
-                )
+                ),
               )}
             </div>
           ) : (
@@ -2350,6 +3062,9 @@ export default function OrdersManagement2() {
       )}
 
       <PreviewModal />
+
+      <ProductionAllocationModal />
+      <ProductionHistoryModal />
     </div>
   );
 
@@ -2420,7 +3135,7 @@ export default function OrdersManagement2() {
           handleFileChange(droppedFile);
         } else {
           alert(
-            "Please upload only images (JPEG, PNG, GIF, WebP) or PDF files"
+            "Please upload only images (JPEG, PNG, GIF, WebP) or PDF files",
           );
         }
       }
@@ -2608,6 +3323,4 @@ export default function OrdersManagement2() {
       </div>
     );
   }
-
- 
 }

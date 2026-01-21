@@ -15,6 +15,8 @@ const ProductionManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
+  const [selectedOrigin, setSelectedOrigin] = useState("");
+
   const [activeSheet, setActiveSheet] = useState("tracking");
 
   // Expand states
@@ -23,51 +25,135 @@ const ProductionManagement = () => {
   const [expandedColors, setExpandedColors] = useState({});
 
   const toNumber = (value) => {
-    if (!value || value == "0") return 0;
-    return Number(String(value).replace(/,/g, ""));
+    if (value === undefined || value === null || value === "") return 0;
+    if (typeof value === "number") return value;
+
+    // Remove commas and convert to number
+    const numStr = String(value).replace(/,/g, "");
+    const num = Number(numStr);
+
+    // Return 0 if not a valid number, otherwise return the number
+    return isNaN(num) ? 0 : num;
+  };
+
+  const getAllocationData = (orderId, productId) => {
+    try {
+      const allocationKey = `${orderId}_${productId}`;
+      const existingAllocations = JSON.parse(
+        localStorage.getItem("iml_production_allocation") || "{}",
+      );
+
+      const allocations = existingAllocations[allocationKey] || [];
+      const totalAllocated = allocations.reduce(
+        (sum, alloc) => sum + (Number(alloc.allocatedQty) || 0),
+        0,
+      );
+
+      return {
+        allocations: allocations,
+        totalAllocated: totalAllocated,
+        origin: allocations.length > 0 ? "Remaining Allocation" : "Main Order",
+      };
+    } catch (error) {
+      console.error("Error getting allocation data:", error);
+      return { allocations: [], totalAllocated: 0, origin: "Main Order" };
+    }
   };
 
   const getTotalLabels = (orderId, productId, imlType) => {
     const labelData = JSON.parse(
-      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}"
+      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}",
     );
     const exactKey = `${orderId}_${productId}`;
     const item = labelData[exactKey];
 
-    if (!item) return { lidTotal: 0, tubTotal: 0, total: 0 };
+    // FIX: Return default values if item doesn't exist
+    if (!item) {
+      console.log(`❌ No data found for key: ${exactKey}`);
+      return { lidTotal: 0, tubTotal: 0, total: 0 };
+    }
 
     let lidTotal = 0;
     let tubTotal = 0;
 
+    // FIX: Check if history exists and is an array - SUM ALL ENTRIES
     if (item.history && Array.isArray(item.history)) {
-      item.history.forEach((h) => {
+      console.log(
+        `🔢 Summing ${item.history.length} history entries for ${exactKey}, imlType: ${imlType}`,
+      );
+
+      item.history.forEach((h, index) => {
+        console.log(`  Entry ${index + 1}:`, h);
+
+        // ALWAYS read receivedQuantity first - this is the main quantity field
+        const receivedQty = Number(h.receivedQuantity || 0);
+        const lidQty = Number(h.lidReceivedQuantity || 0);
+        const tubQty = Number(h.tubReceivedQuantity || 0);
+
+        console.log(
+          `    receivedQty: ${receivedQty}, lidQty: ${lidQty}, tubQty: ${tubQty}`,
+        );
+
         if (h.imlType === "LID & TUB") {
-          // LID & TUB: Separate counts
-          lidTotal += Number(h.lidReceivedQuantity || 0);
-          tubTotal += Number(h.tubReceivedQuantity || 0);
-        } else if (h.imlType === "LID") {
-          // LID only: count only lid
-          lidTotal += Number(h.receivedQuantity || h.lidReceivedQuantity || 0);
-        } else if (h.imlType === "TUB") {
-          // TUB only: count only tub
-          tubTotal += Number(h.receivedQuantity || h.tubReceivedQuantity || 0);
-        } else {
-          // For backward compatibility
-          const qty = Number(
-            h.receivedQuantity ||
-              h.lidReceivedQuantity ||
-              h.tubReceivedQuantity ||
-              0
-          );
-          if (qty > 0) {
-            lidTotal += qty;
-            tubTotal += qty;
+          // LID & TUB: Use separate counts if available, otherwise split receivedQty
+          if (lidQty > 0 || tubQty > 0) {
+            lidTotal += lidQty;
+            tubTotal += tubQty;
+            console.log(
+              `    LID & TUB: +${lidQty} LID, +${tubQty} TUB (from separate fields)`,
+            );
+          } else {
+            // Split evenly if only receivedQuantity is provided
+            lidTotal += Math.floor(receivedQty / 2);
+            tubTotal += receivedQty - Math.floor(receivedQty / 2);
+            console.log(`    LID & TUB: Split ${receivedQty} evenly`);
           }
+        } else if (h.imlType === "LID" || imlType === "LID") {
+          // LID only: use receivedQuantity (or lidReceivedQuantity if available)
+          const qty = lidQty > 0 ? lidQty : receivedQty;
+          lidTotal += qty;
+          console.log(`    LID: +${qty}`);
+        } else if (h.imlType === "TUB" || imlType === "TUB") {
+          // TUB only: use receivedQuantity (or tubReceivedQuantity if available)
+          const qty = tubQty > 0 ? tubQty : receivedQty;
+          tubTotal += qty;
+          console.log(`    TUB: +${qty}`);
+        } else {
+          // For backward compatibility - single type, add to both
+          const qty = receivedQty;
+          lidTotal += qty;
+          tubTotal += qty;
+          console.log(`    Single/Other: +${qty} to both`);
         }
       });
+    } else {
+      // Fallback to top-level receivedQuantity
+      const qty = Number(item.receivedQuantity || 0);
+
+      // Distribute based on imlType
+      if (imlType === "LID") {
+        lidTotal = qty;
+        console.log(`  No history, LID type: ${qty}`);
+      } else if (imlType === "TUB") {
+        tubTotal = qty;
+        console.log(`  No history, TUB type: ${qty}`);
+      } else if (imlType === "LID & TUB") {
+        lidTotal = Math.floor(qty / 2);
+        tubTotal = qty - lidTotal;
+        console.log(
+          `  No history, LID & TUB type: ${qty} -> LID:${lidTotal}, TUB:${tubTotal}`,
+        );
+      } else {
+        lidTotal = qty;
+        tubTotal = qty;
+        console.log(`  No history, Single type: ${qty} to both`);
+      }
     }
 
     const total = lidTotal + tubTotal;
+    console.log(
+      `✅ Final totals for ${exactKey}: LID=${lidTotal}, TUB=${tubTotal}, Total=${total}`,
+    );
     return { lidTotal, tubTotal, total };
   };
 
@@ -78,6 +164,28 @@ const ProductionManagement = () => {
     const storedOrders = localStorage.getItem(STORAGE_KEY_ORDERS);
     const storedLabelQty = localStorage.getItem(STORAGE_KEY_LABEL_QTY);
 
+    // Add this at the beginning of loadProductionData to debug
+    console.log("=== DEBUG: Checking label quantity data ===");
+    const debugLabelData = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}",
+    );
+    Object.keys(debugLabelData).forEach((key) => {
+      const item = debugLabelData[key];
+      if (item && item.history && Array.isArray(item.history)) {
+        console.log(`Key: ${key}`);
+        console.log(`  Top-level receivedQuantity: ${item.receivedQuantity}`);
+        console.log(`  History entries: ${item.history.length}`);
+        let sum = 0;
+        item.history.forEach((h, i) => {
+          console.log(
+            `  Entry ${i + 1}: receivedQuantity=${h.receivedQuantity}, imlType=${h.imlType}`,
+          );
+          sum += Number(h.receivedQuantity || 0);
+        });
+        console.log(`  Sum of history receivedQuantity: ${sum}`);
+      }
+    });
+
     if (!storedOrders || !storedLabelQty) {
       console.warn("⚠️ No orders or label quantities found");
       setProductionData([]);
@@ -87,98 +195,238 @@ const ProductionManagement = () => {
     try {
       const allOrders = JSON.parse(storedOrders);
       const labelData = JSON.parse(storedLabelQty);
-
       const productionItems = [];
 
       // Process each order
       allOrders.forEach((order) => {
         order.products?.forEach((product) => {
-          if (product.moveToPurchase) {
-            const key = `${order.id}_${product.id}`;
-            const labelInfo = labelData[key];
+          const key = `${order.id}_${product.id}`;
+          const labelInfo = labelData[key];
 
-            const storedProduction = localStorage.getItem(
-              STORAGE_KEY_PRODUCTION_FOLLOWUPS
+          // Skip if no label data AND no allocation data
+          const allocationData = getAllocationData(order.id, product.id);
+          const hasAllocations = allocationData.totalAllocated > 0;
+
+          if (!labelInfo && !hasAllocations) {
+            console.log(`Skipping ${key}: No label or allocation data`);
+            return;
+          }
+
+          // **MAIN ORDER PROCESSING** - Only if labelInfo exists
+          if (labelInfo) {
+            console.log(`Processing main order for ${key}:`, labelInfo);
+
+            // Get main order production data
+            const mainStoredProduction = localStorage.getItem(
+              STORAGE_KEY_PRODUCTION_FOLLOWUPS,
             );
-            const allProductionData = storedProduction
-              ? JSON.parse(storedProduction)
+            const mainProductionData = mainStoredProduction
+              ? JSON.parse(mainStoredProduction)
               : {};
-            const followups = Array.isArray(allProductionData[key])
-              ? allProductionData[key]
+            const mainFollowups = Array.isArray(mainProductionData[key])
+              ? mainProductionData[key]
               : [];
 
-            // Get total labels using the getTotalLabels function for accuracy
+            // USE getTotalLabels function
             const labelTotals = getTotalLabels(
               order.id,
               product.id,
-              product.imlType
+              product.imlType,
             );
 
-            // Calculate used labels separately for LID and TUB
-            let lidUsed = 0;
-            let tubUsed = 0;
+            const mainLidTotal = labelTotals.lidTotal;
+            const mainTubTotal = labelTotals.tubTotal;
+            const mainTotal = labelTotals.total;
+
+            console.log(
+              `Main order totals for ${key}: LID=${mainLidTotal}, TUB=${mainTubTotal}, Total=${mainTotal}`,
+            );
+            console.log(
+              `Main followups count: ${mainFollowups.length}`,
+              mainFollowups,
+            );
+
+            // Calculate used quantities from main followups
+            let mainLidUsed = 0;
+            let mainTubUsed = 0;
             let totalUsed = 0;
 
             if (product.imlType === "LID & TUB") {
-              followups.forEach((e) => {
+              mainFollowups.forEach((e) => {
                 const accepted = toNumber(e.acceptedComponents || 0);
-                // Check componentType if available
                 if (e.componentType === "LID") {
-                  lidUsed += accepted;
+                  mainLidUsed += accepted;
                 } else if (e.componentType === "TUB") {
-                  tubUsed += accepted;
+                  mainTubUsed += accepted;
                 } else {
-                  // For backward compatibility
-                  lidUsed += accepted;
-                  tubUsed += accepted;
+                  mainLidUsed += accepted;
+                  mainTubUsed += accepted;
                 }
               });
-              totalUsed = lidUsed + tubUsed;
+              totalUsed = mainLidUsed + mainTubUsed;
             } else {
-              // For single type
-              totalUsed = followups.reduce((sum, e) => {
+              // For LID/TUB/single types
+              totalUsed = mainFollowups.reduce((sum, e) => {
                 const accepted = toNumber(e.acceptedComponents || 0);
                 return sum + accepted;
               }, 0);
-              lidUsed = totalUsed;
-              tubUsed = totalUsed;
+              mainLidUsed = totalUsed;
+              mainTubUsed = totalUsed;
             }
 
-            if (labelInfo) {
-              productionItems.push({
-                id: key,
+            console.log(`Total used from followups: ${totalUsed}`);
+
+            const mainLidRemaining = Math.max(mainLidTotal - mainLidUsed, 0);
+            const mainTubRemaining = Math.max(mainTubTotal - mainTubUsed, 0);
+            const mainRemainingTotal = Math.max(mainTotal - totalUsed, 0);
+
+            console.log(
+              `Remaining calculation: ${mainTotal} - ${totalUsed} = ${mainRemainingTotal}`,
+            );
+
+            // Add main order item ONLY if there are labels to produce
+            if (mainTotal > 0) {
+              const mainItem = {
+                id: `${key}_main`,
+                originalId: key,
                 orderId: order.id,
                 productId: product.id,
-                orderNumber: order.orderNumber, // Added this line
+                orderNumber: order.orderNumber,
                 companyName: order.contact.company,
                 productCategory: product.productName,
                 size: product.size,
                 imlName: product.imlName,
-                imlType: product.imlType || labelInfo.imlType,
-                labelType: labelInfo.imlType,
+                imlType: product.imlType,
                 lidColor: product.lidColor || "N/A",
                 tubColor: product.tubColor || "N/A",
-                orderQuantity: labelInfo.orderQuantity,
-                receivedQuantity: labelInfo.receivedQuantity,
+                labelType: labelInfo.imlType || product.imlType,
+                orderQuantity: labelInfo.orderQuantity || 0,
+                // Show the TOTAL sum from getTotalLabels
+                receivedQuantity: mainTotal,
                 allReceived: labelInfo.allReceived || false,
-                lidTotal: labelTotals.lidTotal,
-                tubTotal: labelTotals.tubTotal,
-                lidRemaining: Math.max(labelTotals.lidTotal - lidUsed, 0),
-                tubRemaining: Math.max(labelTotals.tubTotal - tubUsed, 0),
-                // FIXED: For single type, show correct remaining
-                remainingLabels:
-                  product.imlType === "LID"
-                    ? Math.max(labelTotals.lidTotal - lidUsed, 0)
-                    : product.imlType === "TUB"
-                    ? Math.max(labelTotals.tubTotal - tubUsed, 0)
-                    : Math.max(labelTotals.total - totalUsed, 0),
-              });
+                lidTotal: mainLidTotal,
+                tubTotal: mainTubTotal,
+                lidRemaining: mainLidRemaining,
+                tubRemaining: mainTubRemaining,
+                remainingLabels: mainRemainingTotal,
+                origin: "Main Order",
+                isFromRemaining: false,
+                followups: mainFollowups.length,
+                // Add history count for debugging
+                historyCount: labelInfo.history ? labelInfo.history.length : 0,
+              };
+              productionItems.push(mainItem);
+              console.log(
+                `Added main order item: ${key}_main, Total Received: ${mainTotal}, Remaining: ${mainRemainingTotal}, Used: ${totalUsed}`,
+              );
             }
+          }
+
+          // **REMAINING ALLOCATION PROCESSING** - Only if allocations exist
+          // **REMAINING ALLOCATION PROCESSING** - Only if allocations exist
+          if (hasAllocations) {
+            console.log(
+              `Processing remaining allocation for ${key}:`,
+              allocationData,
+            );
+
+            // Get remaining production data
+            const remainingStoredProduction = localStorage.getItem(
+              "iml_remaining_production_followups",
+            );
+            const remainingProductionData = remainingStoredProduction
+              ? JSON.parse(remainingStoredProduction)
+              : {};
+            const remainingFollowups = Array.isArray(
+              remainingProductionData[key],
+            )
+              ? remainingProductionData[key]
+              : [];
+
+            // Calculate remaining allocation totals
+            const allocatedTotal = allocationData.totalAllocated;
+            let allocLidTotal = 0;
+            let allocTubTotal = 0;
+
+            // Use the same logic as getTotalLabels for consistency
+            if (product.imlType === "LID & TUB") {
+              allocLidTotal = Math.floor(allocatedTotal / 2);
+              allocTubTotal = allocatedTotal - allocLidTotal;
+            } else if (product.imlType === "LID") {
+              allocLidTotal = allocatedTotal;
+            } else if (product.imlType === "TUB") {
+              allocTubTotal = allocatedTotal;
+            } else {
+              // Single type - distribute to both
+              allocLidTotal = allocatedTotal;
+              allocTubTotal = allocatedTotal;
+            }
+
+            // Calculate used quantities from remaining followups
+            let allocLidUsed = 0;
+            let allocTubUsed = 0;
+
+            if (product.imlType === "LID & TUB") {
+              remainingFollowups.forEach((e) => {
+                const accepted = toNumber(e.acceptedComponents || 0);
+                if (e.componentType === "LID") {
+                  allocLidUsed += accepted;
+                } else if (e.componentType === "TUB") {
+                  allocTubUsed += accepted;
+                }
+              });
+            } else {
+              allocLidUsed = remainingFollowups.reduce((sum, e) => {
+                const accepted = toNumber(e.acceptedComponents || 0);
+                return sum + accepted;
+              }, 0);
+              allocTubUsed = allocLidUsed;
+            }
+
+            const allocLidRemaining = Math.max(allocLidTotal - allocLidUsed, 0);
+            const allocTubRemaining = Math.max(allocTubTotal - allocTubUsed, 0);
+            const allocRemainingTotal = Math.max(
+              allocatedTotal - (allocLidUsed + allocTubUsed),
+              0,
+            );
+
+            // Add remaining allocation item
+            const remainingItem = {
+              id: `${key}_remaining`,
+              originalId: key,
+              orderId: order.id,
+              productId: product.id,
+              orderNumber: order.orderNumber,
+              companyName: order.contact.company,
+              productCategory: product.productName,
+              size: product.size,
+              imlName: `${product.imlName}`,
+              imlType: product.imlType,
+              lidColor: product.lidColor || "N/A",
+              tubColor: product.tubColor || "N/A",
+              labelType: product.imlType,
+              orderQuantity: 0,
+              receivedQuantity: allocatedTotal,
+              allReceived: true,
+              lidTotal: allocLidTotal,
+              tubTotal: allocTubTotal,
+              lidRemaining: allocLidRemaining,
+              tubRemaining: allocTubRemaining,
+              remainingLabels: allocRemainingTotal,
+              origin: "Remaining Allocation",
+              isFromRemaining: true,
+              followups: remainingFollowups.length,
+            };
+            productionItems.push(remainingItem);
+            console.log(
+              `Added remaining allocation item: ${key}_remaining, Allocated: ${allocatedTotal}`,
+            );
           }
         });
       });
 
-      console.log("✅ Production items loaded:", productionItems.length);
+      console.log("✅ Total production items loaded:", productionItems.length);
+      console.log("📊 All items:", productionItems);
       setProductionData(productionItems);
     } catch (error) {
       console.error("❌ Error loading production data:", error);
@@ -229,9 +477,15 @@ const ProductionManagement = () => {
 
   // Get production status
   const getProductionStatus = (itemId) => {
-    const storedFollowups = localStorage.getItem(
-      STORAGE_KEY_PRODUCTION_FOLLOWUPS
-    );
+    const item = productionData.find((item) => item.id === itemId);
+    if (!item) return "Pending";
+
+    // Get followups from correct storage based on origin
+    const storageKey = item.isFromRemaining
+      ? "iml_remaining_production_followups"
+      : STORAGE_KEY_PRODUCTION_FOLLOWUPS;
+
+    const storedFollowups = localStorage.getItem(storageKey);
     const allProductionData = storedFollowups
       ? JSON.parse(storedFollowups)
       : {};
@@ -239,9 +493,6 @@ const ProductionManagement = () => {
     const followups = Array.isArray(allProductionData[itemId])
       ? allProductionData[itemId]
       : [];
-
-    const item = productionData.find((item) => item.id === itemId);
-    if (!item) return "Pending";
 
     const isLidTub = item.imlType === "LID & TUB";
     const isLidOnly = item.imlType === "LID";
@@ -274,7 +525,10 @@ const ProductionManagement = () => {
     productionData.forEach((item) => {
       const category = item.productCategory;
       const size = item.size;
-      const color = `${item.lidColor} / ${item.tubColor}`;
+      // Include source in color key to separate them
+      const color = item.isFromRemaining
+        ? `Lid: ${item.lidColor} / Tub: ${item.tubColor} `
+        : `Lid: ${item.lidColor} / Tub: ${item.tubColor}`;
 
       if (!grouped[category]) {
         grouped[category] = {};
@@ -342,14 +596,38 @@ const ProductionManagement = () => {
             );
           });
 
-          if (filteredItems.length > 0) {
+          // Apply origin filter
+          const originFilteredItems = filteredItems.filter((item) => {
+            if (!selectedOrigin) return true;
+            return item.origin === selectedOrigin;
+          });
+
+          if (originFilteredItems.length > 0) {
             if (!filtered[category]) {
               filtered[category] = {};
             }
             if (!filtered[category][size]) {
               filtered[category][size] = {};
             }
-            filtered[category][size][color] = filteredItems;
+
+            // Create separate color entries for main and remaining
+            const mainItems = originFilteredItems.filter(
+              (item) => !item.isFromRemaining,
+            );
+            const remainingItems = originFilteredItems.filter(
+              (item) => item.isFromRemaining,
+            );
+
+            // Add main items under original color
+            if (mainItems.length > 0) {
+              filtered[category][size][color] = mainItems;
+            }
+
+            // Add remaining items under a modified color name
+            if (remainingItems.length > 0) {
+              const remainingColor = `${color} (Remaining)`;
+              filtered[category][size][remainingColor] = remainingItems;
+            }
           }
         });
       });
@@ -383,30 +661,39 @@ const ProductionManagement = () => {
   };
 
   // Open production details
-  const handleViewDetails = (item) => {
-    navigate("/iml/production/details", {
-      state: {
-        entry: {
-          id: item.id,
-          orderId: item.orderId,
-          productId: item.productId,
-          orderNumber: item.orderNumber,
-          company: item.companyName,
-          product: item.productCategory,
-          size: item.size,
-          imlName: item.imlName,
-          imlType: item.imlType,
-          containerColor: `Lid: ${item.lidColor}, Tub: ${item.tubColor}`,
-          lidRemaining: item.lidRemaining,
-          tubRemaining: item.tubRemaining,
-          // For backward compatibility with non-LID&TUB types
-          lidTotalLabels: item.lidTotal,
-          tubTotalLabels: item.tubTotal,
-          noOfLabels: item.receivedQuantity,
-        },
+  // ProductionManagement2.jsx - Update handleViewDetails function
+const handleViewDetails = (item) => {
+  navigate("/iml/production/details", {
+    state: {
+      entry: {
+        id: item.originalId,
+        orderId: item.orderId,
+        productId: item.productId,
+        orderNumber: item.orderNumber,
+        company: item.companyName,
+        product: item.productCategory,
+        size: item.size,
+        imlName: item.imlName.replace(" (Remaining)", ""),
+        imlType: item.imlType,
+        containerColor: `Lid: ${item.lidColor}, Tub: ${item.tubColor}`,
+        // PASS THE ALREADY-CALCULATED VALUES
+        lidRemaining: item.lidRemaining,
+        tubRemaining: item.tubRemaining,
+        lidTotalLabels: item.lidTotal,    // This is already calculated
+        tubTotalLabels: item.tubTotal,    // This is already calculated
+        noOfLabels: item.receivedQuantity, // Total received quantity
+        sourceType: item.isFromRemaining ? "remaining" : "main",
+        // ADD THESE NEW PROPERTIES
+        calculatedLidTotal: item.lidTotal,
+        calculatedTubTotal: item.tubTotal,
+        calculatedTotal: item.receivedQuantity,
+        calculatedLidRemaining: item.lidRemaining,
+        calculatedTubRemaining: item.tubRemaining,
+        isFromRemaining: item.isFromRemaining,
       },
-    });
-  };
+    },
+  });
+};
 
   const filteredHierarchy = getFilteredHierarchy();
   const hasData = Object.keys(filteredHierarchy).length > 0;
@@ -452,7 +739,7 @@ const ProductionManagement = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-[.8vw] font-medium text-gray-700 mb-2">
                 Search
@@ -516,12 +803,30 @@ const ProductionManagement = () => {
               </select>
             </div>
 
+            <div>
+              <label className="block text-[.8vw] font-medium text-gray-700 mb-2">
+                Filter by Origin
+              </label>
+              <select
+                value={selectedOrigin}
+                onChange={(e) => setSelectedOrigin(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-[.85vw] py-[0.6vw] focus:ring-2 focus:ring-blue-500 bg-white text-[.8vw]"
+              >
+                <option value="">All Origins</option>
+                <option value="Main Order">Main Order</option>
+                <option value="Remaining Allocation">
+                  Remaining Allocation
+                </option>
+              </select>
+            </div>
+
             <div className="flex items-end">
               <button
                 onClick={() => {
                   setSearchTerm("");
                   setSelectedProduct("");
                   setSelectedSize("");
+                  setSelectedOrigin("");
                 }}
                 className="w-full px-[.85vw] py-[0.6vw] bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium text-[.8vw] cursor-pointer"
               >
@@ -725,6 +1030,9 @@ const ProductionManagement = () => {
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
                                               Available Labels
                                             </th>
+                                            <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">
+                                              Origin
+                                            </th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center text-[.8vw] font-semibold">
                                               Production Status
                                             </th>
@@ -736,7 +1044,7 @@ const ProductionManagement = () => {
                                         <tbody>
                                           {items.map((item, idx) => {
                                             const status = getProductionStatus(
-                                              item.id
+                                              item.id,
                                             );
                                             return (
                                               <tr
@@ -767,18 +1075,66 @@ const ProductionManagement = () => {
                                                   {item.imlType ===
                                                   "LID & TUB" ? (
                                                     <div className="space-y-0.5">
-                                                      <div className="font-semibold text-green-700 flex items-center gap-1">
-                                                        LID: {item.lidRemaining}
+                                                      <div className="font-semibold text-green-700">
+                                                        LID: {item.lidRemaining}{" "}
+                                                        / {item.lidTotal}
                                                       </div>
-                                                      <div className="font-semibold text-blue-700 flex items-center gap-1">
-                                                        TUB: {item.tubRemaining}
+                                                      <div className="font-semibold text-blue-700">
+                                                        TUB: {item.tubRemaining}{" "}
+                                                        / {item.tubTotal}
+                                                      </div>
+                                                      <div className="text-[0.7vw] text-gray-500 mt-1">
+                                                        {item.isFromRemaining
+                                                          ? `Allocated: ${item.receivedQuantity}`
+                                                          : `Total: ${item.lidTotal + item.tubTotal}`}
+                                                        {!item.isFromRemaining &&
+                                                          item.historyCount >
+                                                            1 && (
+                                                            <span className="ml-1">
+                                                              (
+                                                              {
+                                                                item.historyCount
+                                                              }{" "}
+                                                              receipts)
+                                                            </span>
+                                                          )}
                                                       </div>
                                                     </div>
                                                   ) : (
-                                                    <span className="font-semibold text-blue-700">
-                                                      {item.remainingLabels}
-                                                    </span>
+                                                    <div>
+                                                      <div className="font-semibold text-blue-700">
+                                                        {item.remainingLabels} /{" "}
+                                                        {item.receivedQuantity}
+                                                      </div>
+                                                      <div className="text-[0.7vw] text-gray-500 mt-1">
+                                                        {item.isFromRemaining
+                                                          ? `Allocated from remaining`
+                                                          : `Sum of all receipts`}
+                                                        {!item.isFromRemaining &&
+                                                          item.historyCount >
+                                                            1 && (
+                                                            <span className="ml-1">
+                                                              (
+                                                              {
+                                                                item.historyCount
+                                                              }{" "}
+                                                              receipts)
+                                                            </span>
+                                                          )}
+                                                      </div>
+                                                    </div>
                                                   )}
+                                                </td>
+                                                <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                  <span
+                                                    className={`inline-block px-2 py-0.5 rounded text-[.75vw] font-semibold ${
+                                                      item.isFromRemaining
+                                                        ? "bg-purple-100 text-purple-700"
+                                                        : "bg-green-100 text-green-700"
+                                                    }`}
+                                                  >
+                                                    {item.origin}
+                                                  </span>
                                                 </td>
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
                                                   {status === "Pending" ? (
