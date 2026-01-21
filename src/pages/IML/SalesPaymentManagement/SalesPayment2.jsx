@@ -24,45 +24,45 @@ export default function SalesPayment() {
   }, []);
 
   // Check for pending sales payment from inventory
-  useEffect(() => {
-    const pendingSales = localStorage.getItem("pending_iml_sales_payment");
-    if (pendingSales) {
-      const data = JSON.parse(pendingSales);
+  // useEffect(() => {
+  //   const pendingSales = localStorage.getItem("pending_iml_sales_payment");
+  //   if (pendingSales) {
+  //     const data = JSON.parse(pendingSales);
 
-      // Add to sales payment storage
-      const salesPaymentData = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
-      const allSalesPayments = salesPaymentData
-        ? JSON.parse(salesPaymentData)
-        : {};
+  //     // Add to sales payment storage
+  //     const salesPaymentData = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
+  //     const allSalesPayments = salesPaymentData
+  //       ? JSON.parse(salesPaymentData)
+  //       : {};
 
-      if (!allSalesPayments[data.orderId]) {
-        allSalesPayments[data.orderId] = [];
-      }
+  //     if (!allSalesPayments[data.orderId]) {
+  //       allSalesPayments[data.orderId] = [];
+  //     }
 
-      // Add as new bill
-      const newBill = {
-        billId: Date.now(),
-        orderNumber: data.orderNumber,
-        contact: data.contact,
-        products: data.products,
-        estimatedValue: 0,
-        createdAt: data.createdAt,
-        status: "pending", // pending, completed
-      };
+  //     // Add as new bill
+  //     const newBill = {
+  //       billId: Date.now(),
+  //       orderNumber: data.orderNumber,
+  //       contact: data.contact,
+  //       products: data.products,
+  //       estimatedValue: 0,
+  //       createdAt: data.createdAt,
+  //       status: "pending", // pending, completed
+  //     };
 
-      allSalesPayments[data.orderId].push(newBill);
-      localStorage.setItem(
-        SALES_PAYMENT_STORAGE_KEY,
-        JSON.stringify(allSalesPayments)
-      );
+  //     allSalesPayments[data.orderId].push(newBill);
+  //     localStorage.setItem(
+  //       SALES_PAYMENT_STORAGE_KEY,
+  //       JSON.stringify(allSalesPayments)
+  //     );
 
-      // Clear pending
-      localStorage.removeItem("pending_iml_sales_payment");
+  //     // Clear pending
+  //     localStorage.removeItem("pending_iml_sales_payment");
 
-      // Reload data
-      loadAllData();
-    }
-  }, []);
+  //     // Reload data
+  //     loadAllData();
+  //   }
+  // }, []);
 
   // Replace the existing useEffect that sets expanded states with this:
 useEffect(() => {
