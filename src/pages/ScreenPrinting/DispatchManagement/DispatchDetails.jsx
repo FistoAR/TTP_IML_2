@@ -50,47 +50,70 @@ export default function DispatchDetails() {
  useEffect(() => {
   const storedBill = localStorage.getItem("editing_dispatch_bill");
   if (storedBill) {
-    const parsedBill = JSON.parse(storedBill);
-    console.log("Initial load - Loaded bill data:", parsedBill);
-    setBillData(parsedBill);
+    try {
+      const parsedBill = JSON.parse(storedBill);
+      console.log("Initial load - Loaded bill data:", parsedBill);
+      console.log("Bill ID:", parsedBill.id);
+      console.log("Sales Bill ID:", parsedBill.salesBillId);
+      console.log("Order Number:", parsedBill.orderNumber);
+      
+      setBillData(parsedBill);
 
-    // Load sales payment data for customer details
-    loadSalesPaymentData(parsedBill);
+      // Load sales payment data for customer details
+      loadSalesPaymentData(parsedBill);
 
-    // Load existing dispatch data if available
-    // Use values from the bill, not from separate storage
-    setLrNumber(parsedBill.lrNumber || "");
-    setLrDocumentName(parsedBill.lrDocumentName || "");
-    
-    // Handle lrDocument - check both lrDocument and lrDocumentName
-    if (parsedBill.lrDocument) {
-      setLrDocumentName(parsedBill.lrDocument.name || parsedBill.lrDocumentName || "");
-      // If there's image data in lrDocument.data, restore preview
-      if (parsedBill.lrDocument.data) {
-        setLrDocumentPreview(parsedBill.lrDocument.data);
-      } else if (parsedBill.lrDocument.isPdf) {
-        setLrDocumentPreview("pdf");
+      // Set form fields from the bill
+      setLrNumber(parsedBill.lrNumber || "");
+      setLrDocumentName(parsedBill.lrDocumentName || "");
+      
+      // Handle lrDocument preview
+      if (parsedBill.lrDocument) {
+        if (parsedBill.lrDocument.data) {
+          setLrDocumentPreview(parsedBill.lrDocument.data);
+        } else if (parsedBill.lrDocument.isPdf) {
+          setLrDocumentPreview("pdf");
+        }
       }
+      
+      setTransporterName(parsedBill.transporterName || "");
+      setVehicleNumber(parsedBill.vehicleNumber || "");
+      setDriverName(parsedBill.driverName || "");
+      setDriverPhone(parsedBill.driverPhone || "");
+      
+      // Set dispatch date - prioritize saved date, then today
+      const today = getTodayDate();
+      const storedDispatchDate = parsedBill.dispatchDate;
+      const isValidDate = storedDispatchDate && !isNaN(new Date(storedDispatchDate).getTime());
+      setDispatchDate(isValidDate ? storedDispatchDate : today);
+      
+      setRemarks(parsedBill.remarks || "");
+      
+      // Set customer details
+      if (parsedBill.customerName) setCustomerName(parsedBill.customerName);
+      if (parsedBill.customerPhone) setCustomerPhone(parsedBill.customerPhone);
+      
+      // Also check if bill exists in main storage and load that data if available
+      const dispatchData = localStorage.getItem(DISPATCH_STORAGE_KEY);
+      if (dispatchData) {
+        const allDispatch = JSON.parse(dispatchData);
+        if (Array.isArray(allDispatch)) {
+          const mainBill = allDispatch.find(
+            b => b.id === parsedBill.id || 
+            b.salesBillId === parsedBill.salesBillId ||
+            b.orderNumber === parsedBill.orderNumber
+          );
+          if (mainBill) {
+            console.log("Found more recent data in main storage:", mainBill);
+            // Optionally update from main storage
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error("Error parsing bill data:", error);
+      alert("Error loading dispatch data. Redirecting back...");
+      navigate("/screen-printing/dispatch");
     }
-    
-    setTransporterName(parsedBill.transporterName || "");
-    setVehicleNumber(parsedBill.vehicleNumber || "");
-    setDriverName(parsedBill.driverName || "");
-    setDriverPhone(parsedBill.driverPhone || "");
-    
-    // Set dispatch date - prioritize saved date, then today
-    const today = getTodayDate();
-    // Check if dispatchDate exists and is valid
-    const storedDispatchDate = parsedBill.dispatchDate;
-    const isValidDate = storedDispatchDate && !isNaN(new Date(storedDispatchDate).getTime());
-    setDispatchDate(isValidDate ? storedDispatchDate : today);
-    
-    setRemarks(parsedBill.remarks || "");
-    
-    // Also set customer details from the bill itself if they exist
-    if (parsedBill.customerName) setCustomerName(parsedBill.customerName);
-    if (parsedBill.customerPhone) setCustomerPhone(parsedBill.customerPhone);
-    
   } else {
     alert("No dispatch data found. Redirecting back...");
     navigate("/screen-printing/dispatch");
@@ -180,6 +203,41 @@ useEffect(() => {
       setCustomerPhone(dispatchBill.phone || dispatchBill.contact?.phone || "");
     }
   };
+
+
+  // Add this useEffect to fix data structure on load
+useEffect(() => {
+  const fixDispatchDataStructure = () => {
+    try {
+      const dispatchData = localStorage.getItem(DISPATCH_STORAGE_KEY);
+      if (dispatchData) {
+        const parsed = JSON.parse(dispatchData);
+        
+        // If it's an object (old structure), convert to array
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          console.log("Converting old dispatch structure to array...");
+          const newArray = [];
+          
+          // Flatten all entries into a single array
+          Object.keys(parsed).forEach(key => {
+            if (Array.isArray(parsed[key])) {
+              newArray.push(...parsed[key]);
+            } else if (parsed[key]) {
+              newArray.push(parsed[key]);
+            }
+          });
+          
+          localStorage.setItem(DISPATCH_STORAGE_KEY, JSON.stringify(newArray));
+          console.log("Converted to array with", newArray.length, "entries");
+        }
+      }
+    } catch (error) {
+      console.error("Error fixing dispatch data structure:", error);
+    }
+  };
+  
+  fixDispatchDataStructure();
+}, []);
 
   // Handle LR input change with autocomplete
   const handleLrInputChange = (e) => {
@@ -275,6 +333,7 @@ const reloadSavedData = () => {
     const savedBill = localStorage.getItem("editing_dispatch_bill");
     if (savedBill) {
       const parsed = JSON.parse(savedBill);
+      console.log("Reloading from editing_dispatch_bill:", parsed);
       
       // Update all form fields with saved data
       setLrNumber(parsed.lrNumber || "");
@@ -300,14 +359,26 @@ const reloadSavedData = () => {
       if (parsed.customerName) setCustomerName(parsed.customerName);
       if (parsed.customerPhone) setCustomerPhone(parsed.customerPhone);
       
-      console.log("Reloaded saved data:", parsed);
+      // Also update billData state
+      setBillData(parsed);
     }
     
-    // Also check the main dispatch storage
+    // Check the main dispatch storage
     const dispatchData = localStorage.getItem(DISPATCH_STORAGE_KEY);
     if (dispatchData) {
       const parsedDispatch = JSON.parse(dispatchData);
       console.log("Main dispatch storage:", parsedDispatch);
+      console.log("Number of dispatch entries:", parsedDispatch.length);
+      
+      // If we have a billData, check if it exists in the array
+      if (billData) {
+        const foundBill = parsedDispatch.find(
+          b => b.id === billData.id || 
+          b.dispatchId === billData.dispatchId || 
+          b.salesBillId === billData.salesBillId
+        );
+        console.log("Found bill in main storage?", foundBill ? "YES" : "NO");
+      }
     }
   } catch (error) {
     console.error("Error reloading saved data:", error);
@@ -384,40 +455,38 @@ const handleSave = () => {
 const updateDispatchData = (markAsDispatched) => {
   try {
     const dispatchData = localStorage.getItem(DISPATCH_STORAGE_KEY);
-    const allDispatch = dispatchData ? JSON.parse(dispatchData) : {};
+    let allDispatch = dispatchData ? JSON.parse(dispatchData) : [];
 
-    console.log("Current dispatch data structure:", Object.keys(allDispatch));
+    console.log("Current dispatch data structure:", allDispatch);
+    console.log("Is array?", Array.isArray(allDispatch));
     console.log("Bill data:", billData);
     console.log("Bill id:", billData.id);
     console.log("Bill dispatchId:", billData.dispatchId);
-    
-    // Use orderNumber as the key
-    const orderKey = billData.orderNumber || billData.orderId || `order-${billData.salesBillId}`;
-    console.log("Using key:", orderKey);
-    
-    // Initialize if doesn't exist
-    if (!allDispatch[orderKey]) {
-      allDispatch[orderKey] = [];
-      console.log(`Created new array for key: ${orderKey}`);
-    }
-    
-    // Find the bill in the array - check for both id and dispatchId
-    const billIndex = allDispatch[orderKey].findIndex(
-      (b) => b.id === billData.id || 
-             b.dispatchId === billData.dispatchId || 
-             b.dispatchId === billData.id
+
+    // Find the bill in the array - check for multiple possible identifiers
+    const billIndex = allDispatch.findIndex(
+      (b) => 
+        b.id === billData.id || 
+        b.dispatchId === billData.dispatchId || 
+        b.dispatchId === billData.id ||
+        b.salesBillId === billData.salesBillId ||
+        (b.orderNumber === billData.orderNumber && b.salesBillId === billData.salesBillId)
     );
     
-    console.log(`Found bill at index: ${billIndex} in key: ${orderKey}`);
-    
+    console.log(`Found bill at index: ${billIndex}`);
+
     // Get the existing bill if found, otherwise use current billData
-    const existingBill = billIndex >= 0 ? allDispatch[orderKey][billIndex] : billData;
+    const existingBill = billIndex >= 0 ? allDispatch[billIndex] : billData;
     
     // Create updated bill object
     const updatedBill = {
       ...existingBill,
-      id: billData.id || existingBill.id,
+      id: billData.id || existingBill.id || `DISPATCH_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       dispatchId: billData.dispatchId || existingBill.dispatchId || billData.id,
+      billingId: billData.billingId || existingBill.billingId,
+      salesBillId: billData.salesBillId || existingBill.salesBillId,
+      orderNumber: billData.orderNumber || existingBill.orderNumber,
+      companyName: billData.companyName || existingBill.companyName,
       lrNumber,
       // Handle lrDocument - store metadata only
       lrDocument: lrDocument ? {
@@ -431,23 +500,18 @@ const updateDispatchData = (markAsDispatched) => {
       lrDocumentName: lrDocument ? lrDocument.name : (lrDocumentName || existingBill.lrDocumentName),
       customerName: customerName || existingBill.customerName,
       customerPhone: customerPhone || existingBill.customerPhone,
-      transporterName,
-      vehicleNumber,
-      driverName,
-      driverPhone,
-      dispatchDate,
-      remarks,
-      dispatchStatus: markAsDispatched ? "dispatched" : (existingBill.dispatchStatus || "pending"),
-      updatedAt: new Date().toISOString(),
-      // Ensure we have the correct orderNumber
-      orderNumber: billData.orderNumber || existingBill.orderNumber,
-      // Copy other important fields if they exist in existingBill
-      billingId: billData.billingId || existingBill.billingId,
-      salesBillId: billData.salesBillId || existingBill.salesBillId,
-      companyName: billData.companyName || existingBill.companyName,
+      transporterName: transporterName || existingBill.transporterName,
+      vehicleNumber: vehicleNumber || existingBill.vehicleNumber,
+      driverName: driverName || existingBill.driverName,
+      driverPhone: driverPhone || existingBill.driverPhone,
+      dispatchDate: dispatchDate || existingBill.dispatchDate,
+      remarks: remarks || existingBill.remarks,
       estimatedValue: billData.estimatedValue || existingBill.estimatedValue,
       paymentStatus: billData.paymentStatus || existingBill.paymentStatus,
       products: billData.products || existingBill.products,
+      contact: billData.contact || existingBill.contact,
+      dispatchStatus: markAsDispatched ? "dispatched" : (existingBill.dispatchStatus || "pending"),
+      updatedAt: new Date().toISOString(),
       createdAt: billData.createdAt || existingBill.createdAt || new Date().toISOString(),
     };
 
@@ -458,9 +522,9 @@ const updateDispatchData = (markAsDispatched) => {
 
     // Update or add the bill
     if (billIndex >= 0) {
-      allDispatch[orderKey][billIndex] = updatedBill;
+      allDispatch[billIndex] = updatedBill;
     } else {
-      allDispatch[orderKey].push(updatedBill);
+      allDispatch.push(updatedBill);
     }
 
     // Save back to localStorage
@@ -472,15 +536,13 @@ const updateDispatchData = (markAsDispatched) => {
     // Update local state
     setBillData(updatedBill);
     
-    console.log("Dispatch data updated successfully:", {
-      key: orderKey,
-      billIndex: billIndex >= 0 ? billIndex : 'new',
-      updatedBill: updatedBill
-    });
+    console.log("Dispatch data updated successfully. New structure:", allDispatch);
+    console.log("Updated bill saved with ID:", updatedBill.id);
     
-    // Log the saved data structure
-    const savedData = JSON.parse(localStorage.getItem(DISPATCH_STORAGE_KEY) || '{}');
-    console.log("Saved dispatch data structure:", savedData);
+    // Verify it was saved
+    const savedData = JSON.parse(localStorage.getItem(DISPATCH_STORAGE_KEY) || '[]');
+    const found = savedData.find(b => b.id === updatedBill.id);
+    console.log("Verification - Found in storage:", found ? "YES" : "NO");
     
   } catch (error) {
     console.error("Error updating dispatch data:", error);
