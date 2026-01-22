@@ -72,27 +72,34 @@ export default function SalesPayment() {
   }, []);
 
   useEffect(() => {
-    if (allBills.length > 0) {
-      const groupedOrders = getFilteredGroupedBills();
-      const newExpandedCompanies = {};
-      const newExpandedOrders = {};
+  if (allBills.length > 0) {
+    const groupedOrders = getFilteredGroupedBills();
+    const newExpandedCompanies = {};
+    const newExpandedOrders = {};
+    const newExpandedBills = {};
 
-      // Expand all companies
-      Object.entries(groupedOrders).forEach(([companyName, orders]) => {
-        newExpandedCompanies[companyName] = true;
+    // Expand all companies
+    Object.entries(groupedOrders).forEach(([companyName, orders]) => {
+      newExpandedCompanies[companyName] = true;
 
-        // Expand first order for each company
-        const orderKeys = Object.keys(orders);
-        if (orderKeys.length > 0) {
-          const firstOrderKey = orderKeys[0];
-          newExpandedOrders[`${companyName}_${firstOrderKey}`] = true;
-        }
-      });
+      // Expand first order for each company
+      const orderKeys = Object.keys(orders);
+      if (orderKeys.length > 0) {
+        const firstOrderKey = orderKeys[0];
+        newExpandedOrders[`${companyName}_${firstOrderKey}`] = true;
 
-      setExpandedCompanies(newExpandedCompanies);
-      setExpandedOrders(newExpandedOrders);
-    }
-  }, [allBills.length]);
+        // Expand ALL bills in the first order
+        orders[firstOrderKey].forEach((bill) => {
+          newExpandedBills[`${companyName}_${firstOrderKey}_${bill.billId}`] = true;
+        });
+      }
+    });
+
+    setExpandedCompanies(newExpandedCompanies);
+    setExpandedOrders(newExpandedOrders);
+    setExpandedBills(newExpandedBills);
+  }
+}, [allBills.length]);
 
   const hasCompletedBills = (bills) => {
     return bills.some(bill => bill.status === "completed");
