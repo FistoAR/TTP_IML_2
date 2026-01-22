@@ -329,7 +329,7 @@ const Stocks = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-[.8vw] font-medium text-gray-700 mb-2">
                 Search
@@ -428,13 +428,13 @@ const Stocks = () => {
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            No Inventory Data Found
+          <h3 className="text-[2vw] font-semibold text-gray-900 mb-2">
+            No Stocks Data Found
           </h3>
           <p className="text-gray-600">
             {searchTerm || selectedProduct || selectedSize || statusFilter
               ? "No items match your filters"
-              : "No production has been completed yet"}
+              : ""}
           </p>
         </div>
       ) : (

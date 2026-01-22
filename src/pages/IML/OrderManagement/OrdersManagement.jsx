@@ -1121,7 +1121,7 @@ export default function OrdersManagement2() {
                     - Allocated
                   </p>
                 </div>
-                <div className="flex items-end">
+                <div className="flex items-center">
                   <button
                     onClick={handleSendToProduction}
                     disabled={
@@ -2436,7 +2436,7 @@ export default function OrdersManagement2() {
       {/* Filters - UPDATED with proper width for size dropdown */}
 
       <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-4">
           {/* Search */}
 
           <div>
@@ -2553,7 +2553,7 @@ export default function OrdersManagement2() {
             </svg>
           </div>
 
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          <h3 className="text-[2vw] font-semibold text-gray-900 mb-2">
             No Orders Found
           </h3>
 
@@ -2849,7 +2849,7 @@ export default function OrdersManagement2() {
                                                     {product.imlName || "N/A"}
                                                   </td>
                                                   <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw]">
-                                                    <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                                                    <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded font-semibold">
                                                       {product.imlType || "N/A"}
                                                     </span>
                                                   </td>

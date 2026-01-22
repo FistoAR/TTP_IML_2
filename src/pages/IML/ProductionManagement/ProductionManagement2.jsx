@@ -739,7 +739,7 @@ const handleViewDetails = (item) => {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-5 md:grid-cols-5 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-[.8vw] font-medium text-gray-700 mb-2">
                 Search
@@ -855,7 +855,7 @@ const handleViewDetails = (item) => {
               />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
+          <h3 className="text-[2vw] font-semibold text-gray-900 mb-2">
             No Production Data Found
           </h3>
           <p className="text-gray-600">

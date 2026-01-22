@@ -286,7 +286,7 @@ useEffect(() => {
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-[1vw]">
+        <div className="grid grid-cols-4 md:grid-cols-4 lg:grid-cols-4 gap-[1vw]">
           {/* Search */}
           <div>
             <label className="block text-[0.8vw] font-medium text-gray-700 mb-[0.5vw]">
