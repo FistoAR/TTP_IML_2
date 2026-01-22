@@ -37,7 +37,7 @@ export default function ScreenPrintingOrders() {
     if (storedVersion !== DATA_VERSION) {
       console.log(`Data version mismatch. Clearing old data...`);
       console.log(
-        `Old version: ${storedVersion}, New version: ${DATA_VERSION}`
+        `Old version: ${storedVersion}, New version: ${DATA_VERSION}`,
       );
       // Clear old data
       localStorage.removeItem(STORAGE_KEY);
@@ -45,7 +45,7 @@ export default function ScreenPrintingOrders() {
       // Initialize with fresh dummy data
       initializeDummyData();
       alert(
-        `Data structure updated to version ${DATA_VERSION}. Old data has been cleared.`
+        `Data structure updated to version ${DATA_VERSION}. Old data has been cleared.`,
       );
     }
   }, []);
@@ -408,12 +408,12 @@ export default function ScreenPrintingOrders() {
     }
   }, [searchTerm, orders]);
 
-const isOrderMovedToScreenPrinting = (order) => {
-  if (!order.products || order.products.length === 0) return false;
-  
-  // Check if ALL products in this order have been moved to screen printing
-  return order.products.every((p) => p.moveToScreenPrinting === true);
-};
+  const isOrderMovedToScreenPrinting = (order) => {
+    if (!order.products || order.products.length === 0) return false;
+
+    // Check if ALL products in this order have been moved to screen printing
+    return order.products.every((p) => p.moveToScreenPrinting === true);
+  };
 
   // Handle create new order
   const handleNewOrder = () => {
@@ -423,9 +423,9 @@ const isOrderMovedToScreenPrinting = (order) => {
 
   // Handle edit order
   const handleEditOrder = (order) => {
-console.log("Editing order:", order); // Debug log
-  setEditingOrder(order);
-  setView("form");
+    console.log("Editing order:", order); // Debug log
+    setEditingOrder(order);
+    setView("form");
   };
 
   // Handle delete order
@@ -434,7 +434,7 @@ console.log("Editing order:", order); // Debug log
       setOrders(orders.filter((order) => order.id !== orderId));
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify(orders.filter((order) => order.id !== orderId))
+        JSON.stringify(orders.filter((order) => order.id !== orderId)),
       );
     }
   };
@@ -449,7 +449,7 @@ console.log("Editing order:", order); // Debug log
 
     // Check if already moved
     const alreadyMoved = order.products.every(
-      (p) => p.moveToScreenPrinting === true
+      (p) => p.moveToScreenPrinting === true,
     );
     if (alreadyMoved) {
       alert("This order has already been moved to Screen Printing.");
@@ -502,7 +502,25 @@ console.log("Editing order:", order); // Debug log
   // Handle form submission
   const handleOrderSubmit = (orderData) => {
     let isNotShowAlert = false;
-    if (editingOrder) {
+
+    // Check if this is a restock
+    const isRestock = orderData._isRestock === true;
+
+    if (isRestock) {
+      // Handle RESTOCK - Create completely new order
+      const newOrder = {
+        ...orderData,
+        id: `SP-ORD-${Date.now()}`, // Generate proper ID
+        createdAt: new Date().toISOString(),
+      };
+
+      // Remove the temporary flag
+      delete newOrder._isRestock;
+
+      setOrders([...orders, newOrder]);
+      alert(`New order created from restock: ${newOrder.orderNumber}`);
+    } else if (editingOrder) {
+      // Handle EDITING existing order
       const isValidDate = (date) => {
         const d = new Date(date);
         return d instanceof Date && !isNaN(d);
@@ -517,16 +535,16 @@ console.log("Editing order:", order); // Debug log
               createdAt: isValidDate(order.createdAt)
                 ? order.createdAt
                 : isValidDate(editingOrder.createdAt)
-                ? editingOrder.createdAt
-                : new Date().toISOString(),
+                  ? editingOrder.createdAt
+                  : new Date().toISOString(),
             }
-          : order
+          : order,
       );
       setOrders(updatedOrders);
       isNotShowAlert = true;
       alert("Your order has been updated");
     } else {
-      // Add new order
+      // Handle NEW order
       const newOrder = {
         ...orderData,
         id: `SP-ORD-${Date.now()}`,
@@ -534,8 +552,9 @@ console.log("Editing order:", order); // Debug log
       };
       setOrders([...orders, newOrder]);
     }
+
     setView("dashboard");
-    if (!isNotShowAlert) {
+    if (!isNotShowAlert && !isRestock) {
       alert("Your order has been created");
     }
     setEditingOrder(null);
@@ -600,11 +619,11 @@ console.log("Editing order:", order); // Debug log
       ([companyName, orders]) => {
         const latestDate = Math.max(
           ...Object.values(orders).map((order) =>
-            new Date(order.createdAt || 0).getTime()
-          )
+            new Date(order.createdAt || 0).getTime(),
+          ),
         );
         return { companyName, orders, latestDate };
-      }
+      },
     );
 
     // Sort companies by latest date (descending)
@@ -661,7 +680,7 @@ console.log("Editing order:", order); // Debug log
             order.contact.contactName.toLowerCase().includes(searchLower) ||
             order.contact.phone.toLowerCase().includes(searchLower) ||
             order.products?.some((product) =>
-              product.printingName?.toLowerCase().includes(searchLower)
+              product.printingName?.toLowerCase().includes(searchLower),
             );
         }
 
@@ -674,7 +693,7 @@ console.log("Editing order:", order); // Debug log
         let matchesProduct = true;
         if (selectedProduct) {
           matchesProduct = order.products?.some(
-            (product) => product.productName === selectedProduct
+            (product) => product.productName === selectedProduct,
           );
         }
 
@@ -684,7 +703,7 @@ console.log("Editing order:", order); // Debug log
           matchesSize = order.products?.some(
             (product) =>
               product.productName === selectedProduct &&
-              product.size === selectedSize
+              product.size === selectedSize,
           );
         }
 
@@ -714,7 +733,7 @@ console.log("Editing order:", order); // Debug log
     if (!order.products || order.products.length === 0) return "pending";
 
     const statuses = order.products.map((p) =>
-      (p.designStatus || "pending").toLowerCase()
+      (p.designStatus || "pending").toLowerCase(),
     );
 
     if (statuses.includes("in-progress")) return "in-progress";
@@ -731,12 +750,12 @@ console.log("Editing order:", order); // Debug log
     return (
       <div className="min-h-screen bg-gray-50 p-[1vw]">
         <ScreenPrintingOrderDetails
-        existingOrder={editingOrder}  // ✅ CORRECT
-        existingOrders={orders}  
-        onSubmit={handleOrderSubmit}
-        onCancel={handleCancel}
-        onBack={handleBack}
-      />
+          existingOrder={editingOrder} // ✅ CORRECT
+          existingOrders={orders}
+          onSubmit={handleOrderSubmit}
+          onCancel={handleCancel}
+          onBack={handleBack}
+        />
       </div>
     );
   }
@@ -822,7 +841,7 @@ console.log("Editing order:", order); // Debug log
       alert(
         bulkPayment.paymentType === "advance"
           ? "Payment recorded successfully!"
-          : "PO recorded successfully!"
+          : "PO recorded successfully!",
       );
 
       setBulkPayment({
@@ -838,7 +857,7 @@ console.log("Editing order:", order); // Debug log
       if (!window.confirm("Delete this payment record?")) return;
 
       const updatedRecords = existingPaymentRecords.filter(
-        (_, i) => i !== index
+        (_, i) => i !== index,
       );
       const updatedOrder = {
         ...order,
@@ -1146,7 +1165,7 @@ console.log("Editing order:", order); // Debug log
                               {Math.max(
                                 totals.balance -
                                   parseFloat(bulkPayment.amount || 0),
-                                0
+                                0,
                               ).toFixed(2)}
                             </span>
                           </div>
@@ -1212,7 +1231,7 @@ console.log("Editing order:", order); // Debug log
                                 year: "numeric",
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              }
+                              },
                             )}
                           </td>
                           <td className="border border-gray-300 p-[0.75vw]">
@@ -1301,7 +1320,7 @@ console.log("Editing order:", order); // Debug log
   // Handle saving payment updates
   const handleSavePayment = (updatedOrder) => {
     const updatedOrders = orders.map((o) =>
-      o.id === updatedOrder.id ? updatedOrder : o
+      o.id === updatedOrder.id ? updatedOrder : o,
     );
     setOrders(updatedOrders);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
@@ -1654,16 +1673,20 @@ console.log("Editing order:", order); // Debug log
                                     onClick={() => handleEditOrder(order)}
                                     className="px-[1vw] py-[0.35vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[0.85vw] font-medium transition-all"
                                   >
-                                    {!isOrderMovedToScreenPrinting(order) ? 'Edit' : 'Change Request' }
+                                    {!isOrderMovedToScreenPrinting(order)
+                                      ? "Edit"
+                                      : "Change Request"}
                                   </button>
-                                   {!isOrderMovedToScreenPrinting(order) && (
+                                  {!isOrderMovedToScreenPrinting(order) && (
                                     <button
-                                      onClick={() => handleDeleteOrder(order.id)}
+                                      onClick={() =>
+                                        handleDeleteOrder(order.id)
+                                      }
                                       className="px-[1vw] py-[0.35vw] cursor-pointer bg-red-600 text-white rounded hover:bg-red-700 text-[0.85vw] font-medium transition-all"
                                     >
                                       Delete
                                     </button>
-                                   )}
+                                  )}
                                   <button
                                     onClick={() =>
                                       handlemoveToScreenPrinting(order)
@@ -1732,7 +1755,7 @@ console.log("Editing order:", order); // Debug log
                                               // Calculate values for this product
                                               const remaining =
                                                 calculateRemainingItems(
-                                                  product
+                                                  product,
                                                 );
 
                                               // Calculate total ordered and produced
@@ -1740,7 +1763,7 @@ console.log("Editing order:", order); // Debug log
                                                 parseInt(product.quantity) || 0;
                                               const totalPrinted =
                                                 parseInt(
-                                                  product.printedQuantity
+                                                  product.printedQuantity,
                                                 ) || 0;
 
                                               return (
@@ -1802,9 +1825,9 @@ console.log("Editing order:", order); // Debug log
                                                         status === "approved"
                                                           ? "bg-green-100 text-green-700"
                                                           : status ===
-                                                            "in-progress"
-                                                          ? "bg-yellow-100 text-yellow-700"
-                                                          : "bg-orange-100 text-orange-700";
+                                                              "in-progress"
+                                                            ? "bg-yellow-100 text-yellow-700"
+                                                            : "bg-orange-100 text-orange-700";
                                                       return (
                                                         <span
                                                           className={`inline-block px-[1vw] py-[.3vw] rounded-full text-[.85vw] font-semibold ${colorClasses}`}
@@ -1823,7 +1846,7 @@ console.log("Editing order:", order); // Debug log
                                                         onClick={() =>
                                                           handlemoveToScreenPrinting(
                                                             order,
-                                                            product
+                                                            product,
                                                           )
                                                         }
                                                         className="px-[1vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-.8vw font-medium transition-all"
@@ -1834,7 +1857,7 @@ console.log("Editing order:", order); // Debug log
                                                   )}
                                                 </tr>
                                               );
-                                            }
+                                            },
                                           )}
                                         </tbody>
                                       </table>
@@ -1852,7 +1875,7 @@ console.log("Editing order:", order); // Debug log
                       </div>
                     )}
                   </div>
-                )
+                ),
               )}
             </div>
           ) : (

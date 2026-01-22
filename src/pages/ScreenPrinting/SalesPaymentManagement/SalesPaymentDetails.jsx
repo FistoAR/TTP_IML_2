@@ -509,6 +509,11 @@ export default function SalesPaymentDetails() {
   const [transportSuggestions, setTransportSuggestions] = useState([]);
   const [showTransportDropdown, setShowTransportDropdown] = useState(false);
 
+  // restock popup
+  const [showRestockModal, setShowRestockModal] = useState(false);
+  const [billingSubmissionData, setBillingSubmissionData] = useState(null);
+
+
   // Load transport names
   useEffect(() => {
     const storedTransports = localStorage.getItem(TRANSPORT_NAMES_STORAGE_KEY);
@@ -1056,13 +1061,129 @@ export default function SalesPaymentDetails() {
       allBilling[billData.orderId].push(billingEntry);
       localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(allBilling));
 
-      alert("Bill sent to Billing successfully!");
-      navigate("/screen-printing/sales-payment");
+      // NEW: Store the order details and show restock modal
+      setBillingSubmissionData({
+        orderNumber: billData.orderNumber,
+        companyName: billData.contact?.company || "Unknown Company",
+      });
+      
+      setShowRestockModal(true);
+      
+      // Remove old alert
+      // alert("Bill sent to Billing successfully!");
+      
     } catch (error) {
       console.error("Error submitting to billing:", error);
       alert("An error occurred. Please try again.");
     }
   };
+
+  // NEW: Handle restock decision
+  const handleRestockDecision = (shouldRestock) => {
+    setShowRestockModal(false);
+    
+    if (shouldRestock && billingSubmissionData) {
+      // Navigate to order details with orderNumber
+      navigate(`/screen-printing/order-details?orderNumber=${billingSubmissionData.orderNumber}&fromRestock=true`);
+
+    } else {
+      // Just navigate back to sales payment page
+      navigate("/screen-printing/sales-payment");
+    }
+    
+    // Clear the stored data
+    setBillingSubmissionData(null);
+  };
+
+  // NEW: Restock Modal Component
+  const RestockModal = () => {
+    if (!showRestockModal || !billingSubmissionData) return null;
+
+    return (
+      <div className="fixed inset-0 bg-[#000000ba] z-50 flex items-center justify-center p-[1vw]">
+        <div className="bg-white rounded-lg overflow-hidden max-w-[40%] w-full">
+          <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <h2 className="text-[1.2vw] font-bold text-gray-800">
+              📦 Restock Order
+            </h2>
+            <button
+              onClick={() => handleRestockDecision(false)}
+              className="text-gray-500 hover:text-gray-800 text-[1.2vw] font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="p-[1.5vw]">
+            <div className="mb-[1.5vw]">
+              <div className="w-[3vw] h-[3vw] bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-[1vw]">
+                <svg
+                  className="w-[1.5vw] h-[1.5vw] text-blue-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+              </div>
+              
+              <h3 className="text-[1.1vw] font-semibold text-gray-800 text-center mb-[0.5vw]">
+                Bill Sent to Billing Successfully!
+              </h3>
+              
+              <p className="text-[0.9vw] text-gray-600 text-center mb-[1.5vw]">
+                <strong>Order:</strong> {billingSubmissionData.orderNumber}<br/>
+                <strong>Company:</strong> {billingSubmissionData.companyName}
+              </p>
+              
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-[1vw] mb-[1.5vw]">
+                <p className="text-[0.9vw] font-medium text-blue-800 text-center">
+                  Do you want to restock this order now?
+                </p>
+                <p className="text-[0.75vw] text-blue-600 text-center mt-1">
+                  This will redirect you to the order details page where you can manage stock
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center gap-4 p-4 border-t border-gray-300 bg-gray-50">
+            <button
+              onClick={() => handleRestockDecision(false)}
+              className="px-[1.5vw] py-[0.6vw] text-[0.9vw] cursor-pointer border-2 border-gray-300 text-gray-700 bg-white rounded font-medium hover:bg-gray-50 transition-all"
+            >
+              No, Go Back
+            </button>
+            <button
+              onClick={() => handleRestockDecision(true)}
+              className="px-[1.5vw] py-[0.6vw] text-[0.9vw] cursor-pointer bg-blue-600 text-white rounded font-semibold hover:bg-blue-700 transition-all shadow-md flex items-center gap-[0.5vw]"
+            >
+              <svg
+                className="w-[1vw] h-[1vw]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+              Yes, Restock Order
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   // Transport functions
   const addTransportName = (name) => {
@@ -2316,6 +2437,9 @@ export default function SalesPaymentDetails() {
         addPaymentRecord={addPaymentRecord}
         calculateTotals={calculateTotals}
       />
+
+      {/* restock modal */}
+      <RestockModal />
     </div>
   );
 }

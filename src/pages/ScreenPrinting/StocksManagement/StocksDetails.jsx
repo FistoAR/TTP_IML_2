@@ -159,113 +159,127 @@ export default function StocksDetails() {
   };
 
   // Handle Verify and Send
-  const handleVerifyAndSend = () => {
-    const selected = Object.entries(selectedProducts).filter(
-      ([_, data]) => data.selected
-    );
+ const handleVerifyAndSend = () => {
+  const selected = Object.entries(selectedProducts).filter(
+    ([_, data]) => data.selected
+  );
 
-    if (selected.length === 0) {
-      alert("Please select at least one product to verify and send");
+  if (selected.length === 0) {
+    alert("Please select at least one product to verify and send");
+    return;
+  }
+
+  // Validate quantities
+  for (const [productId, data] of selected) {
+    if (data.quantity <= 0) {
+      alert("Please enter valid quantities for all selected products");
       return;
     }
+  }
 
-    // Validate quantities
-    for (const [productId, data] of selected) {
-      if (data.quantity <= 0) {
-        alert("Please enter valid quantities for all selected products");
+  if (
+    !window.confirm(
+      `Verify and send ${selected.length} product(s) to Sales Payment?`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    // Save verified stock data
+    const stocksVerified = localStorage.getItem(STOCKS_VERIFIED_STORAGE_KEY);
+    const allVerified = stocksVerified ? JSON.parse(stocksVerified) : {};
+
+    if (!allVerified[orderData.id]) {
+      allVerified[orderData.id] = [];
+    }
+
+    // Update or add verified entries
+    selected.forEach(([productId, data]) => {
+      // FIXED: Use string comparison, not parseInt
+      const product = availableProducts.find(
+        (p) => String(p.productId) === String(productId)
+      );
+
+      if (!product) {
+        console.error("Product not found:", productId);
+        console.log("Available products:", availableProducts);
         return;
       }
-    }
 
-    if (
-      !window.confirm(
-        `Verify and send ${selected.length} product(s) to Sales Payment?`
-      )
-    ) {
-      return;
-    }
+      // FIXED: Use string comparison for finding existing entry
+      const existingIndex = allVerified[orderData.id].findIndex(
+        (v) => String(v.productId) === String(productId)
+      );
 
-    try {
-      // Save verified stock data
-      const stocksVerified = localStorage.getItem(STOCKS_VERIFIED_STORAGE_KEY);
-      const allVerified = stocksVerified ? JSON.parse(stocksVerified) : {};
+      const verifiedEntry = {
+        productId: productId, // Keep as string
+        productName: product.productName,
+        size: product.size,
+        printingName: product.printingName,
+        quantityVerified: data.alreadyVerified + data.quantity,
+        totalReceived: product.totalReceived,
+        createdAt:
+          existingIndex >= 0
+            ? allVerified[orderData.id][existingIndex].createdAt
+            : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-      if (!allVerified[orderData.id]) {
-        allVerified[orderData.id] = [];
+      if (existingIndex >= 0) {
+        allVerified[orderData.id][existingIndex] = verifiedEntry;
+      } else {
+        allVerified[orderData.id].push(verifiedEntry);
       }
+    });
 
-      // Update or add verified entries
-      selected.forEach(([productId, data]) => {
+    localStorage.setItem(
+      STOCKS_VERIFIED_STORAGE_KEY,
+      JSON.stringify(allVerified)
+    );
+
+    // Prepare data for Sales Payment
+    const salesPaymentData = {
+      orderId: orderData.id,
+      orderNumber: orderData.orderNumber,
+      contact: orderData.contact,
+      products: selected.map(([productId, data]) => {
+        // FIXED: Use string comparison
         const product = availableProducts.find(
-          (p) => p.productId === parseInt(productId)
+          (p) => String(p.productId) === String(productId)
         );
-
-        // Check if already exists
-        const existingIndex = allVerified[orderData.id].findIndex(
-          (v) => v.productId === parseInt(productId)
-        );
-
-        const verifiedEntry = {
-          productId: parseInt(productId),
+        
+        if (!product) {
+          console.error("Product not found for sales payment:", productId);
+          return null;
+        }
+        
+        return {
+          productId: productId, // Keep as string
           productName: product.productName,
           size: product.size,
           printingName: product.printingName,
-          quantityVerified: data.alreadyVerified + data.quantity,
-          totalReceived: product.totalReceived,
-          createdAt:
-            existingIndex >= 0
-              ? allVerified[orderData.id][existingIndex].createdAt
-              : new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          quantity: data.quantity,
+          rate: 0,
+          amount: 0,
         };
+      }).filter(Boolean), // Filter out null entries
+      createdAt: new Date().toISOString(),
+    };
 
-        if (existingIndex >= 0) {
-          allVerified[orderData.id][existingIndex] = verifiedEntry;
-        } else {
-          allVerified[orderData.id].push(verifiedEntry);
-        }
-      });
+    // Save to Sales Payment storage (temporary for now)
+    localStorage.setItem(
+      "pending_sales_payment",
+      JSON.stringify(salesPaymentData)
+    );
 
-      localStorage.setItem(
-        STOCKS_VERIFIED_STORAGE_KEY,
-        JSON.stringify(allVerified)
-      );
-
-      // Prepare data for Sales Payment
-      const salesPaymentData = {
-        orderId: orderData.id,
-        orderNumber: orderData.orderNumber,
-        contact: orderData.contact,
-        products: selected.map(([productId, data]) => {
-          const product = availableProducts.find(
-            (p) => p.productId === parseInt(productId)
-          );
-          return {
-            productId: parseInt(productId),
-            productName: product.productName,
-            size: product.size,
-            printingName: product.printingName,
-            quantity: data.quantity,
-            rate: 0,
-            amount: 0,
-          };
-        }),
-        createdAt: new Date().toISOString(),
-      };
-
-      // Save to Sales Payment storage (temporary for now)
-      localStorage.setItem(
-        "pending_sales_payment",
-        JSON.stringify(salesPaymentData)
-      );
-
-      alert("Products verified and sent to Sales Payment successfully!");
-      navigate("/screen-printing/stocks");
-    } catch (error) {
-      console.error("Error verifying and sending:", error);
-      alert("An error occurred. Please try again.");
-    }
-  };
+    alert("Products verified and sent to Sales Payment successfully!");
+    navigate("/screen-printing/stocks");
+  } catch (error) {
+    console.error("Error verifying and sending:", error);
+    alert("An error occurred. Please try again.");
+  }
+};
 
   // Handle back
   const handleBack = () => {

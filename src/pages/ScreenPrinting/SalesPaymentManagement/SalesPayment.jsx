@@ -24,6 +24,12 @@ export default function SalesPayment() {
     loadAllData();
   }, []);
 
+  const handleRestockOrder = (orderNumber) => {
+    // Navigate to order details with orderNumber parameter
+      navigate(`/screen-printing/order-details?orderNumber=${orderNumber}&fromRestock=true`);
+
+  };
+
   // Check for pending sales payment from stocks
   useEffect(() => {
     const pendingSales = localStorage.getItem("pending_sales_payment");
@@ -87,6 +93,10 @@ export default function SalesPayment() {
       setExpandedOrders(newExpandedOrders);
     }
   }, [allBills.length]);
+
+  const hasCompletedBills = (bills) => {
+    return bills.some(bill => bill.status === "completed");
+  };
 
   const loadAllData = () => {
     try {
@@ -512,6 +522,32 @@ export default function SalesPayment() {
                               </div>
                             </div>
                           </div>
+
+                             {/* NEW: Restock Order Button */}
+                          {hasCompletedBills(bills) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestockOrder(orderKey);
+                              }}
+                              className="ml-[1vw] px-[1vw] py-[0.5vw] bg-amber-600 text-white rounded-lg font-semibold text-[0.85vw] hover:bg-amber-700 transition-all cursor-pointer shadow-md flex items-center gap-[0.5vw]"
+                            >
+                              <svg
+                                className="w-[0.8vw] h-[0.8vw]"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                                />
+                              </svg>
+                              Restock Order
+                            </button>
+                          )}
                         </div>
 
                         {/* Bills within Order */}

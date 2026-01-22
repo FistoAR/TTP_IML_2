@@ -92,38 +92,46 @@ export default function GoodsReturned() {
 
   // Handle product selection
   const handleProductSelect = (e) => {
-    const productId = parseInt(e.target.value);
-    if (!productId) {
-      setFormData({
-        productId: "",
-        productName: "",
-        size: "",
-        printingName: "",
-        jobWorkEntryId: "",
-        printerName: "",
-        quantitySent: 0,
-        quantityReceived: "",
-        remarks: "",
-      });
-      return;
-    }
+  const productId = e.target.value; // Don't use parseInt!
+  console.log("Selected product ID:", productId, "Type:", typeof productId);
+  
+  if (!productId || productId === "") {
+    setFormData({
+      productId: "",
+      productName: "",
+      size: "",
+      printingName: "",
+      jobWorkEntryId: "",
+      printerName: "",
+      quantitySent: 0,
+      quantityReceived: "",
+      remarks: "",
+    });
+    return;
+  }
 
-    const selectedProduct = orderData.products.find((p) => p.id === productId);
+  // Find product with string comparison
+  const selectedProduct = orderData.products.find(
+    (p) => String(p.id) === String(productId)
+  );
 
-    if (selectedProduct) {
-      setFormData({
-        productId: selectedProduct.id,
-        productName: selectedProduct.productName || "",
-        size: selectedProduct.size || "",
-        printingName: selectedProduct.printingName || "",
-        jobWorkEntryId: "",
-        printerName: "",
-        quantitySent: 0,
-        quantityReceived: "",
-        remarks: "",
-      });
-    }
-  };
+  if (selectedProduct) {
+    setFormData({
+      productId: selectedProduct.id,
+      productName: selectedProduct.productName || "",
+      size: selectedProduct.size || "",
+      printingName: selectedProduct.printingName || "",
+      jobWorkEntryId: "",
+      printerName: "",
+      quantitySent: 0,
+      quantityReceived: "",
+      remarks: "",
+    });
+  } else {
+    console.error("Product not found. Selected ID:", productId);
+  }
+};
+
 
   // Handle job work entry selection
   const handleJobWorkEntrySelect = (e) => {

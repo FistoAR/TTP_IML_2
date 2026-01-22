@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom"; // ADD useLocation
+
 import { RgbaColorPicker } from "react-colorful";
 import * as pdfjsLib from "pdfjs-dist";
 
 import design1PDF from "../../../assets/pdf/design1.pdf";
 import design2PDF from "../../../assets/pdf/design2.pdf";
 import design3PDF from "../../../assets/pdf/design3.pdf";
+
+const SCREEN_PRINTING_ORDERS_KEY = "screen_printing_orders";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -348,6 +352,23 @@ export default function ScreenPrintingOrderDetails({
   onCancel,
   onBack,
 }) {
+
+  const navigate = useNavigate();
+  const location = useLocation(); // ADD THIS
+  
+  const getUrlParams = () => {
+  const searchParams = new URLSearchParams(location.search);
+  const fromRestock = searchParams.get('fromRestock');
+  
+  return {
+    orderNumber: searchParams.get('orderNumber'),
+    fromRestock: fromRestock === 'true', // Properly convert to boolean
+    source: searchParams.get('source') || 'order-management'
+  };
+};
+
+  
+
   const [contact, setContact] = useState({
     company: "",
     contactName: "",
@@ -419,10 +440,12 @@ export default function ScreenPrintingOrderDetails({
   };
 
   function generateOrderNumber() {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return `ORD-${timestamp}-${random}`;
-  }
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 10000);
+  const newOrderNumber = `SP-ORD-${timestamp}-${random}`;
+  console.log("Generated new order number:", newOrderNumber); // Debug log
+  return newOrderNumber;
+}
 
   const isOrderMovedToScreenPrinting = () => {
     if (
@@ -627,6 +650,211 @@ export default function ScreenPrintingOrderDetails({
     }
   }, [existingOrder]);
 
+
+  const loadOrderFromUrlParams = () => {
+  const params = getUrlParams();
+  console.log("URL Params:", params); // Debug log
+  
+  if (params.orderNumber) {
+    try {
+      const ordersData = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
+      if (ordersData) {
+        const allOrders = JSON.parse(ordersData);
+        const foundOrder = allOrders.find(order => order.orderNumber === params.orderNumber);
+        
+        if (foundOrder) {
+          console.log("Found order:", foundOrder.orderNumber, "Restock mode:", params.fromRestock);
+          
+          // Set contact details
+          setContact({
+            company: foundOrder.contact?.company || "",
+            contactName: foundOrder.contact?.contactName || "",
+            phone: foundOrder.contact?.phone || "",
+            priority: foundOrder.contact?.priority || "medium",
+          });
+
+          // CRITICAL FIX: Always generate NEW order number for restocks
+          const isRestock = params.fromRestock === true;
+          let orderNumberToShow;
+          
+          if (isRestock) {
+            // For restock: Generate NEW order number immediately
+            orderNumberToShow = generateOrderNumber();
+            console.log("Restock - Generating new order number:", orderNumberToShow);
+          } else {
+            // For edit/view: Show original order number
+            orderNumberToShow = foundOrder.orderNumber;
+            console.log("Edit mode - Showing original order number:", orderNumberToShow);
+          }
+          
+          setOrderDetails({
+            orderNumber: orderNumberToShow, // This will show correct number in input
+            estimatedNumber: foundOrder.orderEstimate?.estimatedNumber || "",
+            estimatedValue: foundOrder.orderEstimate?.estimatedValue || 0,
+          });
+
+          // Reset payment records for new restock orders
+          const paymentRecordsToUse = isRestock ? [] : foundOrder.paymentRecords || [];
+          
+          // Set products (copy from original)
+          if (foundOrder.products && Array.isArray(foundOrder.products)) {
+            const mappedProducts = foundOrder.products.map((product, index) => ({
+              id: product.id || index + 1,
+              productName: product.productName || "",
+              size: product.size || "",
+              printingName: product.printingName || "",
+              lidColor: product.lidColor || "transparent",
+              tubColor: product.tubColor || "white",
+              printType: product.printType || "LID",
+              lidPrintingColor1: product.lidPrintingColor1 || product.printingColor1 || "",
+              lidPrintingColor2: product.lidPrintingColor2 || product.printingColor2 || "",
+              lidPrintingColor3: product.lidPrintingColor3 || product.printingColor3 || "",
+              tubPrintingColor1: product.tubPrintingColor1 || "",
+              tubPrintingColor2: product.tubPrintingColor2 || "",
+              tubPrintingColor3: product.tubPrintingColor3 || "",
+              lidLabelQty: product.lidLabelQty || "",
+              lidProductionQty: product.lidProductionQty || "",
+              lidStock: product.lidStock || 0,
+              tubLabelQty: product.tubLabelQty || "",
+              tubProductionQty: product.tubProductionQty || "",
+              tubStock: product.tubStock || 0,
+              budget: product.budget || 0,
+              estimatedNumber: product.estimatedNumber || 0,
+              estimatedValue: product.estimatedValue || 0,
+              quantity: product.quantity || "",
+              lidDesignFile: product.lidDesignFile || null,
+              lidSelectedOldDesign: product.lidSelectedOldDesign || null,
+              tubDesignFile: product.tubDesignFile || null,
+              tubSelectedOldDesign: product.tubSelectedOldDesign || null,
+              approvedDate: product.approvedDate || getTodayDate(),
+              designSharedMail: product.designSharedMail || false,
+              designStatus: product.designStatus || "pending",
+              showLidColorPicker: false,
+              showTubColorPicker: false,
+              designType: product.designType || "new",
+              moveToScreenPrinting: product.moveToScreenPrinting || false,
+              isCollapsed: index !== 0,
+            }));
+            setProducts(mappedProducts);
+          }
+
+          // Set payment details
+          setPayment(foundOrder.payment || {
+            totalEstimated: foundOrder.orderEstimate?.estimatedValue || "",
+            remarks: "",
+          });
+
+          // Set payment records (empty for restock)
+          setPaymentRecords(paymentRecordsToUse);
+          
+          console.log("Order details set. Order number:", orderNumberToShow);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error("Error loading order from URL:", error);
+    }
+  }
+  return false;
+};
+
+
+  // UPDATED: Initialize with existing order data if editing
+  useEffect(() => {
+    const params = getUrlParams();
+          
+  // If URL has orderNumber parameter, load from URL
+  if (params.orderNumber) {
+    const loaded = loadOrderFromUrlParams();
+    if (!loaded) {
+      console.warn(`Order ${params.orderNumber} not found`);
+      // Generate order number for new orders if not found
+      setOrderDetails((prev) => ({
+        ...prev,
+        orderNumber: generateOrderNumber(),
+      }));
+    }
+  } else if (existingOrder) {
+      // Original logic for existingOrder prop
+      console.log("Loading existing order from prop:", existingOrder);
+
+      // Set contact details
+      setContact({
+        company: existingOrder.contact?.company || "",
+        contactName: existingOrder.contact?.contactName || "",
+        phone: existingOrder.contact?.phone || "",
+        priority: existingOrder.contact?.priority || "medium",
+      });
+
+      // Set order details
+      setOrderDetails({
+        orderNumber: existingOrder.orderNumber || "",
+        estimatedNumber: existingOrder.orderEstimate?.estimatedNumber || "",
+        estimatedValue: existingOrder.orderEstimate?.estimatedValue || 0,
+      });
+
+      // Set products with proper structure including separate color fields
+      if (existingOrder.products && Array.isArray(existingOrder.products)) {
+        const mappedProducts = existingOrder.products.map((product, index) => ({
+          id: product.id || index + 1,
+          productName: product.productName || "",
+          size: product.size || "",
+          printingName: product.printingName || "",
+          lidColor: product.lidColor || "transparent",
+          tubColor: product.tubColor || "white",
+          printType: product.printType || "LID",
+          lidPrintingColor1: product.lidPrintingColor1 || product.printingColor1 || "",
+          lidPrintingColor2: product.lidPrintingColor2 || product.printingColor2 || "",
+          lidPrintingColor3: product.lidPrintingColor3 || product.printingColor3 || "",
+          tubPrintingColor1: product.tubPrintingColor1 || "",
+          tubPrintingColor2: product.tubPrintingColor2 || "",
+          tubPrintingColor3: product.tubPrintingColor3 || "",
+          lidLabelQty: product.lidLabelQty || "",
+          lidProductionQty: product.lidProductionQty || "",
+          lidStock: product.lidStock || 0,
+          tubLabelQty: product.tubLabelQty || "",
+          tubProductionQty: product.tubProductionQty || "",
+          tubStock: product.tubStock || 0,
+          budget: product.budget || 0,
+          estimatedNumber: product.estimatedNumber || 0,
+          estimatedValue: product.estimatedValue || 0,
+          quantity: product.quantity || "",
+          lidDesignFile: product.lidDesignFile || null,
+          lidSelectedOldDesign: product.lidSelectedOldDesign || null,
+          tubDesignFile: product.tubDesignFile || null,
+          tubSelectedOldDesign: product.tubSelectedOldDesign || null,
+          approvedDate: product.approvedDate || getTodayDate(),
+          designSharedMail: product.designSharedMail || false,
+          designStatus: product.designStatus || "pending",
+          showLidColorPicker: false,
+          showTubColorPicker: false,
+          designType: product.designType || "new",
+          moveToScreenPrinting: product.moveToScreenPrinting || false,
+          isCollapsed: index !== 0,
+        }));
+        setProducts(mappedProducts);
+      }
+
+      // Set payment details
+      setPayment(
+        existingOrder.payment || {
+          totalEstimated: "",
+          remarks: "",
+        },
+      );
+
+      // Set payment records
+      setPaymentRecords(existingOrder.paymentRecords || []);
+    } else {
+      // Generate order number for new orders
+      setOrderDetails((prev) => ({
+        ...prev,
+        orderNumber: generateOrderNumber(),
+      }));
+    }
+  }, [existingOrder, location.search]); // ADD location.search dependency
+
+
   // FIXED: Handle company name input - clear fields when empty
   const handleCompanyInput = (value) => {
     setContact({ ...contact, company: value });
@@ -788,27 +1016,201 @@ export default function ScreenPrintingOrderDetails({
   };
 
   const submitForm = () => {
-    const orderData = {
+  const params = getUrlParams();
+  console.log("Submit params:", params); // Debug log
+  
+  // Check if this is a restock operation
+  const isRestock = params.fromRestock === true;
+  
+  let orderData;
+  
+  if (isRestock) {
+    // SCENARIO 1: RESTOCK - Create NEW order with new order number
+    const newOrderNumber = generateOrderNumber(); // Generate fresh order number
+    
+    orderData = {
+      id: `temp-restock-${Date.now()}`, // Will be replaced by parent
       contact,
-      orderNumber: orderDetails.orderNumber, // ADD THIS
+      orderNumber: newOrderNumber, // NEW unique order number
       orderEstimate: {
-        // ADD THIS
+        estimatedNumber: orderDetails.estimatedNumber,
+        estimatedValue: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      products: products.map((product, index) => ({
+        ...product,
+        id: `product-${Date.now()}-${index}`, // New product IDs
+        moveToScreenPrinting: false, // Reset for new order
+      })),
+      payment: {
+        ...payment,
+        totalEstimated: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      paymentRecords: paymentRecords.map(record => ({
+        ...record,
+        id: `payment-${Date.now()}-${Math.random()}`,
+      })),
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      isRestockedFrom: params.orderNumber, // Track source order
+      restockedAt: new Date().toISOString(),
+      _isRestock: true, // Flag for parent component
+    };
+    
+    console.log("Submitting RESTOCK order:", orderData.orderNumber, "from:", params.orderNumber);
+    
+  } else if (params.orderNumber && !isRestock) {
+    // SCENARIO 2: Editing existing order from URL (not restock)
+    // Load the original order to preserve its ID
+    const originalOrder = loadOriginalOrder(params.orderNumber);
+    
+    orderData = {
+      id: originalOrder?.id || `SP-ORD-${Date.now()}`,
+      contact,
+      orderNumber: params.orderNumber, // Keep original order number
+      orderEstimate: {
+        estimatedNumber: orderDetails.estimatedNumber,
+        estimatedValue: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      products: products.map(product => ({
+        ...product,
+        id: product.id || `product-${Date.now()}-${Math.random()}`,
+      })),
+      payment: {
+        ...payment,
+        totalEstimated: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      paymentRecords: paymentRecords.map(record => ({
+        ...record,
+        id: record.id || `payment-${Date.now()}-${Math.random()}`,
+      })),
+      status: originalOrder?.status || "pending",
+      createdAt: originalOrder?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      _isEditFromUrl: true,
+    };
+    
+    console.log("Submitting EDIT from URL:", orderData.orderNumber);
+    
+  } else if (existingOrder && !isRestock) {
+    // SCENARIO 3: Editing existing order from prop
+    orderData = {
+      ...existingOrder,
+      contact,
+      orderNumber: existingOrder.orderNumber,
+      orderEstimate: {
         estimatedNumber: orderDetails.estimatedNumber,
         estimatedValue: parseFloat(orderDetails.estimatedValue) || 0,
       },
       products,
-      payment,
+      payment: {
+        ...payment,
+        totalEstimated: parseFloat(orderDetails.estimatedValue) || 0,
+      },
       paymentRecords,
-      status: existingOrder?.status || "pending",
+      updatedAt: new Date().toISOString(),
+      _isEditFromProp: true,
     };
+    
+    console.log("Submitting EDIT from prop:", orderData.orderNumber);
+    
+  } else {
+    // SCENARIO 4: Completely NEW order
+    const newOrderNumber = orderDetails.orderNumber || generateOrderNumber();
+    
+    orderData = {
+      id: `temp-new-${Date.now()}`,
+      contact,
+      orderNumber: newOrderNumber,
+      orderEstimate: {
+        estimatedNumber: orderDetails.estimatedNumber,
+        estimatedValue: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      products: products.map((product, index) => ({
+        ...product,
+        id: `product-${Date.now()}-${index}`,
+      })),
+      payment: {
+        ...payment,
+        totalEstimated: parseFloat(orderDetails.estimatedValue) || 0,
+      },
+      paymentRecords: paymentRecords.map(record => ({
+        ...record,
+        id: `payment-${Date.now()}-${Math.random()}`,
+      })),
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      _isNewOrder: true,
+    };
+    
+    console.log("Submitting NEW order:", orderData.orderNumber);
+  }
 
-    if (onSubmit) {
-      onSubmit(orderData);
-    } else {
-      console.log(orderData);
-      alert("Form submitted successfully!");
+  // Call parent's onSubmit handler
+  if (onSubmit) {
+    onSubmit(orderData);
+  } else {
+    // Fallback: Save directly to localStorage
+    saveToLocalStorage(orderData, isRestock);
+  }
+};
+
+
+const loadOriginalOrder = (orderNumber) => {
+  try {
+    const ordersData = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
+    if (ordersData) {
+      const allOrders = JSON.parse(ordersData);
+      return allOrders.find(order => order.orderNumber === orderNumber);
     }
-  };
+  } catch (error) {
+    console.error("Error loading original order:", error);
+  }
+  return null;
+};
+
+// NEW: Fallback save to localStorage
+const saveToLocalStorage = (orderData, isRestock) => {
+  try {
+    const ordersData = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
+    let allOrders = ordersData ? JSON.parse(ordersData) : [];
+    
+    if (isRestock || orderData._isNewOrder) {
+      // For new/restock orders, add to array
+      allOrders.push(orderData);
+      alert(`Order ${isRestock ? 'restocked' : 'created'}: ${orderData.orderNumber}`);
+    } else {
+      // For edits, update existing
+      const orderIndex = allOrders.findIndex(
+        order => order.orderNumber === orderData.orderNumber
+      );
+      
+      if (orderIndex >= 0) {
+        allOrders[orderIndex] = orderData;
+        alert(`Order updated: ${orderData.orderNumber}`);
+      } else {
+        allOrders.push(orderData);
+        alert(`Order created: ${orderData.orderNumber}`);
+      }
+    }
+    
+    localStorage.setItem(SCREEN_PRINTING_ORDERS_KEY, JSON.stringify(allOrders));
+    
+    // Navigate back
+    const params = getUrlParams();
+    if (isRestock) {
+      navigate("/screen-printing/sales-payment");
+    } else if (params.source === 'order-management') {
+      navigate("/screen-printing/orders");
+    } else {
+      navigate("/screen-printing/orders");
+    }
+    
+  } catch (error) {
+    console.error("Error saving to localStorage:", error);
+    alert("Error saving order. Please try again.");
+  }
+};
+
 
   // Convert RGBA to CSS string
   const rgbaToString = (rgba) => {
@@ -1114,8 +1516,43 @@ export default function ScreenPrintingOrderDetails({
   };
 
   const handleBack = () => {
-    if (onBack) onBack();
-  };
+  const params = getUrlParams();
+  
+  // If came from restock (Sales Payment page)
+  if (params.fromRestock) {
+    // Navigate back to Sales Payment page
+    navigate("/screen-printing/sales-payment");
+    return;
+  }
+  
+  // If came from Order Management (with orderNumber parameter)
+  if (params.orderNumber && params.source === 'order-management') {
+    // Navigate back to Order Management page
+    navigate("/screen-printing/orders");
+    return;
+  }
+  
+  // If came from Sales Payment with just orderNumber (viewing)
+  if (params.orderNumber && !params.source) {
+    // Navigate back to Sales Payment page
+    navigate("/screen-printing/sales-payment");
+    return;
+  }
+  
+  // Default back behavior - use parent's onBack if provided
+  try {
+    if (onBack) {
+      onBack();
+    } else {
+      // Fallback navigation
+      navigate("/screen-printing/orders");
+    }
+  } catch (err) {
+    console.log("Error in onBack, using fallback navigation");
+    navigate("/screen-printing/orders");
+  }
+};
+
 
   return (
     <div className="bg-gray-50 p-0">
