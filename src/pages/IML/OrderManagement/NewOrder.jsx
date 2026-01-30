@@ -387,10 +387,11 @@ export default function NewOrder({
 
   // Product size options mapping
   const PRODUCT_SIZE_OPTIONS = {
-    Round: ["120ml", "250ml", "300ml", "500ml", "1000ml"],
+    Round: ["120ml", "250ml", "300ml", "500ml", "750ml", "1000ml"],
+    "Glass Round": ["250ml"],
     "Round Square": ["450ml", "500ml"],
     Rectangle: ["500ml", "650ml", "750ml"],
-    "Sweet Box": ["250gms", "500gms"],
+    "Sweet Box": ["250gms", "500gms", "1kg"],
     "Sweet Box TE": ["TE 250gms", "TE 500gms"],
   };
 
@@ -1364,6 +1365,7 @@ export default function NewOrder({
                           placeholder="Select Product"
                           options={[
                             "Round",
+                            "Glass Round",
                             "Round Square",
                             "Rectangle",
                             "Sweet Box",

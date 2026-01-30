@@ -92,46 +92,42 @@ export default function GoodsReturned() {
 
   // Handle product selection
   const handleProductSelect = (e) => {
-  const productId = e.target.value; // Don't use parseInt!
-  console.log("Selected product ID:", productId, "Type:", typeof productId);
-  
-  if (!productId || productId === "") {
-    setFormData({
-      productId: "",
-      productName: "",
-      size: "",
-      printingName: "",
-      jobWorkEntryId: "",
-      printerName: "",
-      quantitySent: 0,
-      quantityReceived: "",
-      remarks: "",
-    });
-    return;
-  }
+    console.log("handle product select is called");
+    const productId = e.target.value;
+    console.log(`Product id: ${productId}`);
+    console.log(`E: ${e}`)
+    console.log(`E target value: ${e.target.value}`)
+    if (!productId) {
+      setFormData({
+        productId: "",
+        productName: "",
+        size: "",
+        printingName: "",
+        jobWorkEntryId: "",
+        printerName: "",
+        quantitySent: 0,
+        quantityReceived: "",
+        remarks: "",
+      });
+      return;
+    }
 
-  // Find product with string comparison
-  const selectedProduct = orderData.products.find(
-    (p) => String(p.id) === String(productId)
-  );
+    const selectedProduct = orderData.products.find((p) => p.id === productId);
 
-  if (selectedProduct) {
-    setFormData({
-      productId: selectedProduct.id,
-      productName: selectedProduct.productName || "",
-      size: selectedProduct.size || "",
-      printingName: selectedProduct.printingName || "",
-      jobWorkEntryId: "",
-      printerName: "",
-      quantitySent: 0,
-      quantityReceived: "",
-      remarks: "",
-    });
-  } else {
-    console.error("Product not found. Selected ID:", productId);
-  }
-};
-
+    if (selectedProduct) {
+      setFormData({
+        productId: selectedProduct.id,
+        productName: selectedProduct.productName || "",
+        size: selectedProduct.size || "",
+        printingName: selectedProduct.printingName || "",
+        jobWorkEntryId: "",
+        printerName: "",
+        quantitySent: 0,
+        quantityReceived: "",
+        remarks: "",
+      });
+    }
+  };
 
   // Handle job work entry selection
   const handleJobWorkEntrySelect = (e) => {
@@ -705,6 +701,7 @@ export default function GoodsReturned() {
               <select
                 name="productId"
                 value={formData.productId}
+                
                 onChange={handleProductSelect}
                 disabled={editingEntryId !== null}
                 className="w-full border border-gray-300 rounded-lg px-[0.85vw] py-[0.6vw] text-[0.85vw] focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"

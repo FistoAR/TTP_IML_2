@@ -106,36 +106,42 @@ export default function SalesPayment() {
   };
 
   const loadAllData = () => {
-    try {
-      // Load sales payment data
-      const salesPaymentData = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
-      const allSalesPayments = salesPaymentData
-        ? JSON.parse(salesPaymentData)
-        : {};
+  try {
+    // Load sales payment data
+    const salesPaymentData = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
+    const allSalesPayments = salesPaymentData
+      ? JSON.parse(salesPaymentData)
+      : {};
 
-      // Load billing data to check status
-      const billingData = localStorage.getItem(BILLING_STORAGE_KEY);
-      const allBilling = billingData ? JSON.parse(billingData) : {};
+    // Load billing data to check status
+    const billingData = localStorage.getItem(BILLING_STORAGE_KEY);
+    const allBilling = billingData ? JSON.parse(billingData) : {};
 
-      // Load screen printing orders for reference
-      const ordersStored = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
-      const allOrders = ordersStored ? JSON.parse(ordersStored) : [];
+    // Load screen printing orders for reference
+    const ordersStored = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
+    const allOrders = ordersStored ? JSON.parse(ordersStored) : [];
 
-      // Build bills array
-          const billsArray = [];
+    // Build bills array
+    const billsArray = [];
     Object.entries(allSalesPayments).forEach(([orderId, bills]) => {
       const order = allOrders.find((o) => o.id === orderId);
 
       bills.forEach((bill) => {
-        // Check if bill is completed (sent to billing)
+        // FIRST: Check if the bill already has a status from when it was created
+        // If the bill was created from stocks verification, it should already have "pending" status
+        
+        // SECOND: Check if bill is completed (sent to billing)
         const isBilled = allBilling[orderId]?.some(
           (b) => b.salesBillId === bill.billId
         );
 
+        // Preserve the original status if it exists, otherwise use the billing check
+        const billStatus = bill.status || (isBilled ? "completed" : "pending");
+
         billsArray.push({
           orderId,
           ...bill,
-          status: isBilled ? "completed" : "pending",
+          status: billStatus, // Use preserved status
           orderEstimate: order?.orderEstimate?.estimatedValue || 0,
         });
       });
@@ -149,12 +155,10 @@ export default function SalesPayment() {
     });
 
     setAllBills(sortedBills);
-
-      // setAllBills(billsArray);
-    } catch (error) {
-      console.error("Error loading data:", error);
-    }
-  };
+  } catch (error) {
+    console.error("Error loading data:", error);
+  }
+};
 
   // Toggle company expansion
   const toggleCompany = (companyName) => {

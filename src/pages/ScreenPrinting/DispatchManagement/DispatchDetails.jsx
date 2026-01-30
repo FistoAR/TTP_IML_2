@@ -916,10 +916,16 @@ const updateDispatchData = (markAsDispatched) => {
                     }`}>
                     Godown
                   </span>
+                  <span className={`px-2 py-1 rounded text-[0.7vw] font-medium ${salesPaymentData?.customerDetails?.deliveryMethod === "ownpickup"
+                    ? "bg-blue-100 text-blue-700 border border-blue-300"
+                    : "bg-gray-100 text-gray-500"
+                    }`}>
+                    Own Pickup
+                  </span>
                 </div>
                 {salesPaymentData?.customerDetails?.deliveryMethod && (
                   <p className="text-[0.6vw] text-blue-600 mt-1">
-                    Selected: {salesPaymentData.customerDetails.deliveryMethod === "doorstep" ? "Doorstep Delivery" : "Godown Pickup"}
+                    Selected: { salesPaymentData.customerDetails.deliveryMethod === "doorstep" ? "Doorstep Delivery" : salesPaymentData.customerDetails.deliveryMethod === "godown" ? "Godown Pickup" : "Own Pickup" }
                   </p>
                 )}
               </div>
@@ -1136,9 +1142,7 @@ const updateDispatchData = (markAsDispatched) => {
                     : "bg-white border-amber-300"
                     }`}
                 />
-                <p className="text-[0.6vw] text-gray-500 mt-1">
-                  Minimum date: Today ({getTodayDate()})
-                </p>
+                
               </div>
 
               <div>

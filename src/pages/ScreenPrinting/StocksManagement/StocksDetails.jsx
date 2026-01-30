@@ -6,50 +6,186 @@ const GOODS_RETURNED_STORAGE_KEY = "screen_printing_goods_returned_data";
 const STOCKS_VERIFIED_STORAGE_KEY = "screen_printing_stocks_verified_data";
 const SCREEN_PRINTING_ORDERS_KEY = "screen_printing_orders";
 const SALES_PAYMENT_STORAGE_KEY = "screen_printing_sales_payment_data";
+const STORAGE_KEY_BILLING = "screen_printing_billing_data";
+const BILLING_STORAGE_KEY = "screen_printing_billing_data";
+
 
 export default function StocksDetails() {
   const navigate = useNavigate();
   const [orderData, setOrderData] = useState(null);
+  const [allBills, setAllBills] = useState([]);
   const [availableProducts, setAvailableProducts] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
   const [verifiedData, setVerifiedData] = useState([]);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterCategory, setFilterCategory] = useState("all"); // New
+  const [filterSize, setFilterSize] = useState("all"); // New
+
 
   // Load order data
   useEffect(() => {
-    const storedOrder = localStorage.getItem("editing_stock_order");
-    if (storedOrder) {
-      const parsedOrder = JSON.parse(storedOrder);
+  const storedOrder = localStorage.getItem("editing_stock_order");
+  if (storedOrder) {
+    const parsedOrder = JSON.parse(storedOrder);
 
-      // Load the full order details from screen_printing_orders
-      const ordersStored = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
-      const allOrders = ordersStored ? JSON.parse(ordersStored) : [];
-      const fullOrder = allOrders.find((order) => order.id === parsedOrder.id);
+    // Load the full order details from screen_printing_orders
+    const ordersStored = localStorage.getItem(SCREEN_PRINTING_ORDERS_KEY);
+    const allOrders = ordersStored ? JSON.parse(ordersStored) : [];
+    const fullOrder = allOrders.find((order) => order.id === parsedOrder.id);
 
-      if (fullOrder) {
-        // Merge with parsed order data
-        const completeOrder = {
-          ...fullOrder,
-          ...parsedOrder,
-          contact: fullOrder.contact || parsedOrder.contact,
-          orderNumber: fullOrder.orderNumber || parsedOrder.orderNumber,
-        };
+    if (fullOrder) {
+      // Merge with parsed order data
+      const completeOrder = {
+        ...fullOrder,
+        ...parsedOrder,
+        contact: fullOrder.contact || parsedOrder.contact,
+        orderNumber: fullOrder.orderNumber || parsedOrder.orderNumber,
+      };
 
-        setOrderData(completeOrder);
+      setOrderData(completeOrder);
 
-        // Load available products (not yet verified)
-        loadAvailableProducts(completeOrder);
+      // Load available products (not yet verified)
+      loadAvailableProducts(completeOrder);
 
-        // Load already verified data
-        loadVerifiedData(completeOrder.id);
-      } else {
-        alert("Order not found in screen printing orders!");
-        navigate("/screen-printing/stocks");
-      }
+      // Load already verified data
+      loadVerifiedData(completeOrder.id);
+
+      // Load sales payment bills for this order
+      loadAllData(completeOrder.id); // Pass the orderId here
     } else {
-      alert("No order data found. Redirecting back...");
+      alert("Order not found in screen printing orders!");
       navigate("/screen-printing/stocks");
     }
-  }, [navigate]);
+  } else {
+    alert("No order data found. Redirecting back...");
+    navigate("/screen-printing/stocks");
+  }
+}, [navigate]);
+
+
+
+  useEffect(() => {
+  if (allBills.length > 0) {
+    const groupedOrders = getFilteredGroupedBills();
+    const newExpandedCompanies = {};
+    const newExpandedOrders = {};
+    const newExpandedBills = {};
+
+    // Expand all companies
+    Object.entries(groupedOrders).forEach(([companyName, orders]) => {
+      newExpandedCompanies[companyName] = true;
+
+      // Expand first order for each company
+      const orderKeys = Object.keys(orders);
+      if (orderKeys.length > 0) {
+        const firstOrderKey = orderKeys[0];
+        newExpandedOrders[`${companyName}_${firstOrderKey}`] = true;
+
+        // Expand ALL bills in the first order
+        orders[firstOrderKey].forEach((bill) => {
+          newExpandedBills[`${companyName}_${firstOrderKey}_${bill.billId}`] = true;
+        });
+      }
+    });
+
+  }
+}, [allBills.length]);
+
+// useEffect(() => {
+//     loadAllData();
+//   }, []);
+
+useEffect(() => {
+  if (orderData) {
+    loadAllData();
+  }
+}, [orderData]); // This runs when orderData is available
+
+
+  const loadAllData = () => {
+  try {
+    // Load sales payment data
+    const salesPaymentData = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
+    const allSalesPayments = salesPaymentData
+      ? JSON.parse(salesPaymentData)
+      : {};
+
+    // Get only the current order's bills
+    const orderId = orderData?.id;
+    const currentOrderBills = orderId ? allSalesPayments[orderId] || [] : [];
+
+    // Build bills array for current order only
+    const billsArray = currentOrderBills.map((bill) => ({
+      orderId: orderId,
+      ...bill,
+      status: bill.status || "pending",
+    }));
+
+    // Sort by creation date - latest first
+    const sortedBills = billsArray.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      return dateB - dateA; // Descending order (newest first)
+    });
+
+    setAllBills(sortedBills);
+  } catch (error) {
+    console.error("Error loading data:", error);
+  }
+};
+
+
+ const groupBillsByCompany = () => {
+    const grouped = {};
+
+    allBills.forEach((bill) => {
+      const companyName = bill.contact?.company || "Unknown Company";
+      const orderNumber = bill.orderNumber || "N/A";
+
+      if (!grouped[companyName]) {
+        grouped[companyName] = {};
+      }
+
+      if (!grouped[companyName][orderNumber]) {
+        grouped[companyName][orderNumber] = [];
+      }
+
+      grouped[companyName][orderNumber].push(bill);
+    });
+
+    return grouped;
+  };
+  
+
+ const getFilteredGroupedBills = () => {
+  const filtered = {};
+  
+  // Filter bills to only include current order
+  const currentOrderBills = allBills.filter(bill => 
+    bill.orderNumber === orderData?.orderNumber || bill.orderId === orderData?.id
+  );
+
+  // Group by company and order (should be just one company/order for the current order)
+  currentOrderBills.forEach((bill) => {
+    const companyName = bill.contact?.company || "Unknown Company";
+    const orderNumber = bill.orderNumber || "N/A";
+
+    if (!filtered[companyName]) {
+      filtered[companyName] = {};
+    }
+
+    if (!filtered[companyName][orderNumber]) {
+      filtered[companyName][orderNumber] = [];
+    }
+
+    filtered[companyName][orderNumber].push(bill);
+  });
+
+  return filtered;
+};
+
+  const filteredGroupedBills = getFilteredGroupedBills();
 
   // Load available products that haven't been verified yet
   const loadAvailableProducts = (order) => {
@@ -63,7 +199,7 @@ export default function StocksDetails() {
       const products = Object.values(order.products);
       const available = products.filter((product) => {
         const verified = orderVerified.find(
-          (v) => v.productId === product.productId
+          (v) => v.productId === product.productId,
         );
         // Include if not verified or partially verified
         if (!verified) return true;
@@ -76,7 +212,7 @@ export default function StocksDetails() {
       const initialSelection = {};
       available.forEach((product) => {
         const verified = orderVerified.find(
-          (v) => v.productId === product.productId
+          (v) => v.productId === product.productId,
         );
         const alreadyVerified = verified ? verified.quantityVerified : 0;
         const remaining = product.totalReceived - alreadyVerified;
@@ -100,7 +236,29 @@ export default function StocksDetails() {
       const stocksVerified = localStorage.getItem(STOCKS_VERIFIED_STORAGE_KEY);
       const allVerified = stocksVerified ? JSON.parse(stocksVerified) : {};
       const orderVerified = allVerified[orderId] || [];
-      setVerifiedData(orderVerified);
+
+      // Group by updatedAt (acts like bill time)
+      const grouped = {};
+
+      orderVerified.forEach((item) => {
+        const billKey = item.updatedAt || item.createdAt;
+
+        if (!grouped[billKey]) {
+          grouped[billKey] = [];
+        }
+
+        grouped[billKey].push(item);
+      });
+
+      // Convert to array sorted by time (latest first)
+      const bills = Object.entries(grouped)
+        .map(([billTime, items]) => ({
+          billTime,
+          items,
+        }))
+        .sort((a, b) => new Date(b.billTime) - new Date(a.billTime));
+
+      setVerifiedData(bills);
     } catch (error) {
       console.error("Error loading verified data:", error);
     }
@@ -159,9 +317,9 @@ export default function StocksDetails() {
   };
 
   // Handle Verify and Send
- const handleVerifyAndSend = () => {
+const handleVerifyAndSend = () => {
   const selected = Object.entries(selectedProducts).filter(
-    ([_, data]) => data.selected
+    ([_, data]) => data.selected,
   );
 
   if (selected.length === 0) {
@@ -179,7 +337,7 @@ export default function StocksDetails() {
 
   if (
     !window.confirm(
-      `Verify and send ${selected.length} product(s) to Sales Payment?`
+      `Verify and send ${selected.length} product(s) to Sales Payment?`,
     )
   ) {
     return;
@@ -196,24 +354,27 @@ export default function StocksDetails() {
 
     // Update or add verified entries
     selected.forEach(([productId, data]) => {
-      // FIXED: Use string comparison, not parseInt
+      // Find product - use exact string comparison without parseInt
       const product = availableProducts.find(
-        (p) => String(p.productId) === String(productId)
+        (p) => p.productId === productId || p.id === productId,
       );
 
+      // Debug: Check if product exists
       if (!product) {
-        console.error("Product not found:", productId);
-        console.log("Available products:", availableProducts);
-        return;
+        console.error(`Product not found: productId=${productId}, type=${typeof productId}, availableProducts=`, availableProducts);
+        throw new Error(`Product with ID ${productId} not found`);
       }
 
-      // FIXED: Use string comparison for finding existing entry
+      // Use the actual product ID from the found product
+      const actualProductId = product.productId || product.id;
+      
+      // Check if already exists
       const existingIndex = allVerified[orderData.id].findIndex(
-        (v) => String(v.productId) === String(productId)
+        (v) => v.productId === actualProductId,
       );
 
       const verifiedEntry = {
-        productId: productId, // Keep as string
+        productId: actualProductId, // Use the actual ID
         productName: product.productName,
         size: product.size,
         printingName: product.printingName,
@@ -235,27 +396,27 @@ export default function StocksDetails() {
 
     localStorage.setItem(
       STOCKS_VERIFIED_STORAGE_KEY,
-      JSON.stringify(allVerified)
+      JSON.stringify(allVerified),
     );
 
     // Prepare data for Sales Payment
     const salesPaymentData = {
+      billId: `bill-${Date.now()}`,
       orderId: orderData.id,
       orderNumber: orderData.orderNumber,
       contact: orderData.contact,
       products: selected.map(([productId, data]) => {
-        // FIXED: Use string comparison
         const product = availableProducts.find(
-          (p) => String(p.productId) === String(productId)
+          (p) => p.productId === productId || p.id === productId,
         );
-        
+
         if (!product) {
-          console.error("Product not found for sales payment:", productId);
-          return null;
+          console.error(`Product not found for sales payment: productId=${productId}`);
+          throw new Error(`Product with ID ${productId} not found`);
         }
-        
+
         return {
-          productId: productId, // Keep as string
+          productId: product.productId || product.id, // Use actual ID
           productName: product.productName,
           size: product.size,
           printingName: product.printingName,
@@ -263,21 +424,39 @@ export default function StocksDetails() {
           rate: 0,
           amount: 0,
         };
-      }).filter(Boolean), // Filter out null entries
+      }),
+      status: "pending",
       createdAt: new Date().toISOString(),
     };
 
-    // Save to Sales Payment storage (temporary for now)
+    // Save to Sales Payment storage
+    const salesPaymentStored = localStorage.getItem(SALES_PAYMENT_STORAGE_KEY);
+    const allSalesPayments = salesPaymentStored ? JSON.parse(salesPaymentStored) : {};
+    
+    if (!allSalesPayments[orderData.id]) {
+      allSalesPayments[orderData.id] = [];
+    }
+    
+    allSalesPayments[orderData.id].push(salesPaymentData);
+    
     localStorage.setItem(
-      "pending_sales_payment",
-      JSON.stringify(salesPaymentData)
+      SALES_PAYMENT_STORAGE_KEY,
+      JSON.stringify(allSalesPayments),
     );
 
     alert("Products verified and sent to Sales Payment successfully!");
-    navigate("/screen-printing/stocks");
+    
+     loadAvailableProducts(orderData);
+    
+    // Clear selections
+    setSelectedProducts({});
+    
+    // RELOAD THE BILLS TO SHOW NEWLY ADDED BILL
+    loadAllData(); // ADD THIS LINE
+    
   } catch (error) {
     console.error("Error verifying and sending:", error);
-    alert("An error occurred. Please try again.");
+    alert(`An error occurred: ${error.message}. Please try again.`);
   }
 };
 
@@ -353,81 +532,126 @@ export default function StocksDetails() {
         </div>
 
         {/* Already Verified Products */}
-        {verifiedData.length > 0 && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-[1.5vw] mb-[1.5vw]">
-            <h2 className="text-[1.2vw] font-semibold text-green-800 mb-[1vw]">
-              ✓ Already Verified Products
-            </h2>
-            <div className="overflow-x-auto rounded-lg border border-green-300">
-              <table className="w-full border-collapse bg-white">
+{allBills.length > 0 && (
+  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-[1.5vw] mb-[1.5vw]">
+    <h2 className="text-[1.2vw] font-semibold text-green-800 mb-[1vw]">
+      ✓ History of Products Sent to Sales Payment
+    </h2>
+
+    <div className="space-y-[1.5vw]">
+      {allBills.map((bill, billIndex) => (
+        <div
+          key={bill.billId || billIndex}
+          className={`border-2 rounded-lg overflow-hidden border-gray-400
+          }`}
+        >
+          {/* Bill Header */}
+          <div className="px-[1.5vw] py-[0.75vw] bg-white border-b border-gray-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <h5 className="text-[0.95vw] font-semibold text-gray-800">
+                  Bill #{billIndex + 1}
+                </h5>
+                <div className="flex gap-[1.5vw] mt-[0.25vw] text-[0.8vw] text-gray-600">
+                  <span>
+                    <strong>Sent to Sales:</strong>{" "}
+                    {new Date(bill.createdAt).toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  <span>
+                    <strong>Products:</strong> {bill.products.length}
+                  </span>
+                  <span
+                    className={`px-[0.6vw] py-[0.2vw] rounded-full text-[0.7vw] font-semibold ${
+                      bill.status === "completed"
+                        ? "bg-green-200 text-green-800"
+                        : "bg-orange-200 text-orange-800"
+                    }`}
+                  >
+                    {bill.status === "completed"
+                      ? "✓ Sent to Billing"
+                      : "○ Pending in Sales"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bill Products Table */}
+          <div className="px-[1.5vw] pb-[1vw] pt-[1vw] bg-white">
+            <div className="overflow-x-auto rounded-lg border border-gray-300">
+              <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-green-100">
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 px-[1vw] py-[0.5vw] text-left text-[0.8vw] font-semibold">
                       S.No
                     </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[1vw] py-[0.5vw] text-left text-[0.8vw] font-semibold">
                       Product Name
                     </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[1vw] py-[0.5vw] text-left text-[0.8vw] font-semibold">
                       Size
                     </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[1vw] py-[0.5vw] text-left text-[0.8vw] font-semibold">
                       Printing Name
                     </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
-                      Total Received
-                    </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
-                      Verified
-                    </th>
-                    <th className="border border-green-300 px-[1vw] py-[0.6vw] text-left text-[0.85vw] font-semibold">
-                      Status
+                    <th className="border border-gray-300 px-[1vw] py-[0.5vw] text-left text-[0.8vw] font-semibold">
+                      Quantity Sent
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {verifiedData.map((entry, idx) => {
-                    const isFullyVerified =
-                      entry.quantityVerified === entry.totalReceived;
-                    return (
-                      <tr key={entry.productId} className="hover:bg-green-50">
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw]">
-                          {idx + 1}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw] font-medium">
-                          {entry.productName}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw]">
-                          {entry.size}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw]">
-                          {entry.printingName}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw] font-semibold text-blue-600">
-                          {entry.totalReceived}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw] font-semibold text-green-600">
-                          {entry.quantityVerified}
-                        </td>
-                        <td className="border border-green-300 px-[1vw] py-[0.6vw] text-[0.85vw]">
-                          <span
-                            className={`px-[0.75vw] py-[0.25vw] rounded-full text-[0.75vw] font-semibold ${
-                              isFullyVerified
-                                ? "bg-green-200 text-green-800"
-                                : "bg-yellow-200 text-yellow-800"
-                            }`}
-                          >
-                            {isFullyVerified ? "✓ Complete" : "◐ Partial"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {bill.products.map((product, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw]">
+                        {idx + 1}
+                      </td>
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw] font-medium">
+                        {product.productName}
+                      </td>
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw]">
+                        {product.size}
+                      </td>
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw]">
+                        {product.printingName}
+                      </td>
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw] font-semibold text-blue-600">
+                        {product.quantity}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
+                {bill.products.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-gray-50">
+                      <td
+                        colSpan="4"
+                        className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw] font-semibold text-right"
+                      >
+                        Total Quantity Sent in this batch:
+                      </td>
+                      <td className="border border-gray-300 px-[1vw] py-[0.5vw] text-[0.8vw] font-bold text-green-600">
+                        {bill.products.reduce(
+                          (sum, product) => sum + (product.quantity || 0),
+                          0
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
-        )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
         {/* Product Selection */}
         {availableProducts.length > 0 ? (
@@ -501,7 +725,7 @@ export default function StocksDetails() {
                             onChange={(e) =>
                               handleProductSelect(
                                 product.productId,
-                                e.target.checked
+                                e.target.checked,
                               )
                             }
                             className="w-[1.1vw] h-[1.1vw] cursor-pointer"
@@ -523,7 +747,7 @@ export default function StocksDetails() {
                           {product.totalReceived}
                         </td>
                         <td className="border border-gray-300 px-[1vw] py-[0.6vw] text-[0.85vw] font-semibold text-green-600">
-                          {selection?.alreadyVerified || 0}
+                          {selection?.maxQuantity || 0}
                         </td>
                         <td className="border border-gray-300 px-[1vw] py-[0.6vw]">
                           <input
@@ -532,7 +756,7 @@ export default function StocksDetails() {
                             onChange={(e) =>
                               handleQuantityChange(
                                 product.productId,
-                                e.target.value
+                                e.target.value,
                               )
                             }
                             min="1"

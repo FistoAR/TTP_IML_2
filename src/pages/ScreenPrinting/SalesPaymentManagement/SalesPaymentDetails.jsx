@@ -2199,6 +2199,28 @@ export default function SalesPaymentDetails() {
                   Godown Pickup
                 </span>
               </label>
+              <label className="flex items-center gap-[0.5vw] cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMethod"
+                  value="ownpickup"
+                  checked={customerDetails.deliveryMethod === "ownpickup"}
+                  onChange={(e) => {
+                    setCustomerDetails({
+                      ...customerDetails,
+                      deliveryMethod: e.target.value,
+                    });
+                    setHasChanges(true);
+                  }}
+                  disabled={isCompleted}
+                  className="w-4 h-4 cursor-pointer"
+                />
+                <span
+                  className={`text-[0.85vw] font-medium ${isCompleted ? "text-gray-500" : "text-gray-700"}`}
+                >
+                  Own Pickup
+                </span>
+              </label>
             </div>
           </div>
 
