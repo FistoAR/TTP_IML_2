@@ -9,6 +9,8 @@ const VERSION_KEY = "imlorders_version";
 
 const STORAGE_KEY_PRODUCTION_ALLOCATION = "iml_production_allocation";
 const STORAGE_KEY_REMAINING_HISTORY = "iml_remaining_history";
+const STORAGE_KEY_CR_NOTIFICATIONS = "iml_change_requests";
+
 
 // Product size options for initial expansion
 const PRODUCT_SIZE_OPTIONS = {
@@ -60,6 +62,13 @@ export default function OrdersManagement2() {
     product: null,
     history: [],
   });
+
+  // PO popup
+const [showEditModal, setShowEditModal] = useState(false);
+
+const [showRevisionModal, setShowRevisionModal] = useState(false);
+const [revisedEstimatedNo, setRevisedEstimatedNo] = useState("");
+const [revisedEstimatedValue, setRevisedEstimatedValue] = useState("");
 
   useEffect(() => {
     const storedVersion = localStorage.getItem(VERSION_KEY);
@@ -557,6 +566,7 @@ export default function OrdersManagement2() {
       );
     }
   };
+  
 
   // Handle move to purchase
   const handleMoveToPurchase = (order) => {
@@ -593,12 +603,167 @@ export default function OrdersManagement2() {
       setOrders(updatedOrders);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
 
+        navigate('/iml/purchase/po-details', { 
+          state: { orderId: order.id, fromOrdersManagement: true } 
+        });
+
+
       // **NEW: Trigger custom event**
       window.dispatchEvent(new Event("ordersUpdated"));
 
       alert("Order successfully moved to Purchase Management!");
     }
   };
+
+  const handleMoveProductToPurchase = (orderId, productId) => {
+  const order = orders.find(o => o.id === orderId);
+  if (!order) return;
+
+  const product = order.products.find(p => p.id === productId);
+  if (!product) {
+    alert("Product not found.");
+    return;
+  }
+
+  if (product.moveToPurchase) {
+    alert("This product has already been moved to Purchase Management.");
+    return;
+  }
+
+  const confirmMessage =
+    `Are you sure you want to move this product to Purchase Management?\n\n` +
+    `Company: ${order.contact.company}\n` +
+    `Product: ${product.productName || product.name}`;
+
+  if (!window.confirm(confirmMessage)) return;
+
+  // 1️⃣ Update only THIS product
+  const updatedOrders = orders.map(o => {
+    if (o.id !== orderId) return o;
+
+    return {
+      ...o,
+      products: o.products.map(p =>
+        p.id === productId
+          ? { ...p, moveToPurchase: true }
+          : p
+      ),
+    };
+  });
+
+  // 2️⃣ Persist
+  setOrders(updatedOrders);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+
+  // 3️⃣ Notify listeners
+  window.dispatchEvent(new Event("ordersUpdated"));
+
+  // 4️⃣ Navigate to PO Details — IMPORTANT PART
+  navigate("/iml/purchase/po-details", {
+    state: {
+      orderId,
+      fromOrdersManagement: true,
+      movedProductId: productId, // ⭐ THIS is the key addition
+      mode: "single-product",
+    },
+  });
+};
+
+const handleChangeRequest = (order, product) => {
+  setSelectedProduct({
+    orderId: order.id,
+    productId: product.id,
+    product: { ...product }, // snapshot
+  });
+  setShowEditModal(true);
+};
+
+const handleDeleteProduct = ({ orderId, productId }) => {
+  if (!window.confirm("Are you sure you want to delete this product?")) return;
+
+  const storedOrders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS)) || [];
+
+  const updatedOrders = storedOrders.map((o) => {
+    if (o.id !== orderId) return o;
+    return {
+      ...o,
+      products: o.products.filter((p) => p.id !== productId),
+    };
+  });
+
+  localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+  window.dispatchEvent(new Event("ordersUpdated"));
+
+  setShowEditModal(false);
+  alert("Product deleted successfully");
+};
+
+const handleSubmitChangeRequest = () => {
+  if (!revisedEstimatedNo || !revisedEstimatedValue) {
+    alert("Please enter revised values");
+    return;
+  }
+
+  const storedNotifications =
+    JSON.parse(localStorage.getItem(STORAGE_KEY_CR_NOTIFICATIONS)) || [];
+
+  const notification = {
+    id: `cr_${Date.now()}`,
+    orderId: selectedProduct.orderId,
+    productId: selectedProduct.productId,
+    productName: selectedProduct.product.productName,
+
+    oldValues: {
+      estimatedNo: selectedProduct.product.estimatedNo,
+      estimatedValue: selectedProduct.product.estimatedValue,
+      productSnapshot: selectedProduct.product,
+    },
+
+    requestedValues: {
+      estimatedNo: revisedEstimatedNo,
+      estimatedValue: revisedEstimatedValue,
+      updatedProductFields: selectedProduct.product,
+    },
+
+    status: "Pending",
+    requestedAt: new Date().toISOString(),
+  };
+
+  storedNotifications.push(notification);
+  localStorage.setItem(
+    STORAGE_KEY_CR_NOTIFICATIONS,
+    JSON.stringify(storedNotifications)
+  );
+
+  // ---- Update product status ONLY ----
+  const storedOrders =
+    JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS)) || [];
+
+  const updatedOrders = storedOrders.map((o) => {
+    if (o.id !== selectedProduct.orderId) return o;
+
+    return {
+      ...o,
+      products: o.products.map((p) =>
+        p.id === selectedProduct.productId
+          ? { ...p, orderStatus: "CR Approval Pending" }
+          : p
+      ),
+    };
+  });
+
+  localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+  window.dispatchEvent(new Event("ordersUpdated"));
+
+  setShowRevisionModal(false);
+  setSelectedProduct(null);
+  setRevisedEstimatedNo("");
+  setRevisedEstimatedValue("");
+
+  alert("Change Request submitted for approval");
+};
+
+
 
   // handle move to production
   const handleMoveToProduction = (order, product) => {
@@ -1340,6 +1505,7 @@ export default function OrdersManagement2() {
   // Handle form submission from NewOrder component
   const handleOrderSubmit = (orderData) => {
     let isNotShowAlert = false;
+    
     if (editingOrder) {
       // Update existing order
       const isValidDate = (date) => {
@@ -1566,6 +1732,23 @@ export default function OrdersManagement2() {
       false
     );
   };
+
+  const isOrderDesignApproved = (order) => {
+  if (!order?.products || order.products.length === 0) return false;
+
+  return order.products.every(
+    (product) => product.designStatus === "approved"
+  );
+};
+
+const isOrderMovedToPurchase = (order) => {
+  if (!order?.products || order.products.length === 0) return false;
+
+  return order.products.every(
+    (product) => product.moveToPurchase === true
+  );
+};
+
 
   const getArtworkStatusForOrder = (order) => {
     if (!order.products || order.products.length === 0) return "pending";
@@ -2700,15 +2883,15 @@ export default function OrdersManagement2() {
                                       >
                                         💳 Payment
                                       </button>
-
-                                      <button
-                                        onClick={() => handleEditOrder(order)}
-                                        className="px-[1vw] py-[.35vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.85vw] font-medium transition-all"
-                                      >
-                                        {hasMovedToPurchase(order)
-                                          ? "Change Request"
-                                          : "Edit"}
-                                      </button>
+                                      
+                                      {!hasMovedToPurchase(order) && <>
+                                        <button
+                                          onClick={() => handleEditOrder(order)}
+                                          className="px-[1vw] py-[.35vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.85vw] font-medium transition-all"
+                                        >
+                                          Edit
+                                        </button>
+                                      </>}
                                       {!hasMovedToPurchase(order) && (
                                         <button
                                           onClick={() =>
@@ -2719,14 +2902,16 @@ export default function OrdersManagement2() {
                                           Delete
                                         </button>
                                       )}
-                                      <button
-                                        onClick={() =>
-                                          handleMoveToPurchase(order)
-                                        }
-                                        className="px-[1vw] py-[.35vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.85vw] font-medium transition-all"
-                                      >
-                                        Move to Purchase
-                                      </button>
+                                      {(isOrderDesignApproved(order) && !isOrderMovedToPurchase(order)) && (
+                                        <button
+                                          onClick={() =>
+                                            handleMoveToPurchase(order)
+                                          }
+                                          className="px-[1vw] py-[.35vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.85vw] font-medium transition-all"
+                                        >
+                                          Move All to Purchase
+                                        </button>
+                                      )}
                                     </>
                                   )}
                                 </div>
@@ -2785,15 +2970,15 @@ export default function OrdersManagement2() {
                                               </>
                                             )}
 
-                                            <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
-                                              Design Status
+                                            <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
+                                              Order Status
                                             </th>
 
-                                            {viewMode === "remaining" && (
-                                              <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
-                                                Action
-                                              </th>
-                                            )}
+                                            
+                                            <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
+                                              Action
+                                            </th>
+                                          
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -2955,7 +3140,7 @@ export default function OrdersManagement2() {
                                                   )}
 
                                                   <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw]">
-                                                    {(() => {
+                                                    {/* {(() => {
                                                       const status = (
                                                         product.designStatus ||
                                                         "pending"
@@ -2977,9 +3162,16 @@ export default function OrdersManagement2() {
                                                             status.slice(1)}
                                                         </span>
                                                       );
-                                                    })()}
+                                                    })()} */}
+                                                     <span className={`inline-block px-[1vw] py-[.25vw] rounded font-semibold ${
+                                                        product.orderStatus === 'Artwork Approved' 
+                                                          ? 'bg-green-100 text-green-700' 
+                                                          : 'bg-gray-100 text-gray-700'
+                                                      }`}>
+                                                        {product.orderStatus || 'Artwork Pending'}
+                                                      </span>
                                                   </td>
-                                                  {viewMode === "remaining" && (
+                                                  {viewMode === "remaining" ? (
                                                     <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center">
                                                       <div className="flex gap-2 items-center">
                                                         <button
@@ -3006,7 +3198,34 @@ export default function OrdersManagement2() {
                                                         </button>
                                                       </div>
                                                     </td>
-                                                  )}
+                                                  ): 
+                                                  <>
+                                                   <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center">
+                                                      <div className="flex gap-2 items-center">
+                                                        {(product.orderStatus !== "Artwork Pending" && product.orderStatus !== "Artwork Approved" && product.orderStatus) && 
+                                                        <>
+                                                         <button
+                                                          onClick={() => handleChangeRequest(order, product)}
+                                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-orange-600 text-white rounded hover:bg-orange-700 text-[.75vw] font-medium transition-all w-full"
+                                                        >
+                                                          Change request
+                                                        </button>   
+                                                        </>}
+                                                      {(product.designStatus === "approved" && !product.moveToPurchase) ?  
+                                                      <button
+                                                          onClick={() =>
+                                                            handleMoveProductToPurchase(order.id, product.id)
+                                                          }
+                                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
+                                                        >
+                                                          Move to Purchase
+                                                        </button>                                                      
+                                                      : <p className="w-full text-center"> </p> 
+                                                      }
+                                                      </div>
+                                                    </td>
+                                                  </>
+                                                  }
                                                 </tr>
                                               );
                                             },
@@ -3065,6 +3284,92 @@ export default function OrdersManagement2() {
 
       <ProductionAllocationModal />
       <ProductionHistoryModal />
+
+      {showEditModal && selectedProduct && (
+  <div className="modal">
+    <h3>Edit Product – Change Request</h3>
+
+    <input
+      value={selectedProduct.product.productName}
+      onChange={(e) =>
+        setSelectedProduct((prev) => ({
+          ...prev,
+          product: { ...prev.product, productName: e.target.value },
+        }))
+      }
+    />
+
+    <input
+      type="number"
+      value={selectedProduct.product.estimatedNo}
+      onChange={(e) =>
+        setSelectedProduct((prev) => ({
+          ...prev,
+          product: { ...prev.product, estimatedNo: e.target.value },
+        }))
+      }
+    />
+
+    <input
+      type="number"
+      value={selectedProduct.product.estimatedValue}
+      onChange={(e) =>
+        setSelectedProduct((prev) => ({
+          ...prev,
+          product: { ...prev.product, estimatedValue: e.target.value },
+        }))
+      }
+    />
+
+    <div className="modal-actions">
+      <button onClick={() => setShowEditModal(false)}>Cancel</button>
+
+      <button
+        onClick={() => {
+          setShowEditModal(false);
+          setShowRevisionModal(true);
+        }}
+      >
+        Save & Continue
+      </button>
+
+      <button
+        className="danger"
+        onClick={() => handleDeleteProduct(selectedProduct)}
+      >
+        Delete Product
+      </button>
+    </div>
+  </div>
+)}
+
+{showRevisionModal && selectedProduct && (
+  <div className="modal">
+    <h3>Confirm Revised Values</h3>
+
+    <label>Revised Estimated No</label>
+    <input
+      type="number"
+      value={revisedEstimatedNo}
+      onChange={(e) => setRevisedEstimatedNo(e.target.value)}
+    />
+
+    <label>Revised Estimated Value</label>
+    <input
+      type="number"
+      value={revisedEstimatedValue}
+      onChange={(e) => setRevisedEstimatedValue(e.target.value)}
+    />
+
+    <div className="modal-actions">
+      <button onClick={() => setShowRevisionModal(false)}>Cancel</button>
+      <button onClick={handleSubmitChangeRequest}>
+        Submit Change Request
+      </button>
+    </div>
+  </div>
+)}
+
     </div>
   );
 

@@ -38,7 +38,6 @@ const PaymentModal = ({
   setShowPaymentModal,
   bulkPayment,
   setBulkPayment,
-  bulkPaymentType,
   addPaymentRecord,
   calculateTotals,
 }) => {
@@ -77,7 +76,7 @@ const PaymentModal = ({
             </h3>
 
             {/* Payment Type Selection */}
-            {/* <div className="flex gap-[1.2vw] mb-[1.25vw]">
+            <div className="flex gap-[1.2vw] mb-[1.25vw]">
               <label className="flex items-center gap-[.75vw] cursor-pointer">
                 <input
                   type="radio"
@@ -112,7 +111,7 @@ const PaymentModal = ({
                 />
                 <span className="text-[1vw] font-medium text-gray-700">PO</span>
               </label>
-            </div> */}
+            </div>
 
             {/* Advance Payment Fields */}
             {bulkPayment.paymentType === "advance" && (
@@ -386,9 +385,7 @@ export default function NewOrder({
   const [filteredImlNames, setFilteredImlNames] = useState({});
   const [showImlNameSuggestions, setShowImlNameSuggestions] = useState({});
   const imlNameRefs = useRef({});
-
-  const [isFormValid, setIsFormValid] = useState(false);
-  const [selectedPaymentType, setSelectedPaymentType] = useState('advance'); // Default
+  
 
   // Product size options mapping
   const PRODUCT_SIZE_OPTIONS = {
@@ -483,7 +480,6 @@ const getAutoImlType = (productName, size) => {
       approvedDate: getTodayDate(),
       designSharedMail: false,
       designStatus: "pending",
-      orderStatus: "Artwork Pending",  
       showLidColorPicker: false,
       showTubColorPicker: false,
       designType: "new",
@@ -519,7 +515,7 @@ const getAutoImlType = (productName, size) => {
 
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [bulkPayment, setBulkPayment] = useState({
-    paymentType: selectedPaymentType,
+    paymentType: null,
     method: "",
     amount: "",
     remarks: "",
@@ -616,16 +612,11 @@ const getAutoImlType = (productName, size) => {
   }, []);
 
   // Update product field
-  // const updateProduct = (id, field, value) => {
-  //   setProducts(
-  //     products.map((p) => (p.id === id ? { ...p, [field]: value } : p))
-  //   );
-  // };
-   const updateProduct = useCallback((id, field, value) => {
-  setProducts(prevProducts => prevProducts.map(p => 
-    p.id === id ? { ...p, [field]: value } : p
-  ));
-}, []);
+  const updateProduct = (id, field, value) => {
+    setProducts(
+      products.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
+  };
 
   // UPDATED: Handle quantities for LID & TUB separately
   const updateQuantity = (id, type, field, value) => {
@@ -686,7 +677,6 @@ const getAutoImlType = (productName, size) => {
       approvedDate: getTodayDate(),
       designSharedMail: false,
       designStatus: "pending",
-      orderStatus: "Artwork Pending",  
       showLidColorPicker: false,
       showTubColorPicker: false,
       designType: "new",
@@ -1213,64 +1203,6 @@ const getAutoImlType = (productName, size) => {
 
   const [isManualTotal, setIsManualTotal] = useState(false);
 
-  // NEW: Check if ANY product is approved
-const hasAnyApprovedProduct = () => {
-  return products.some(p => p.designStatus === 'approved');
-};
-
-// NEW: Check if has at least 1 payment record
-const hasPaymentRecord2 = () => {
-  return paymentRecords.length > 0;
-};
-
-
-  const validateForm = useCallback(() => {
-  const allProductsValid = products.every(product => {
-    // 1. IML Name required
-    const hasImlName = product.imlName && product.imlName.trim();
-    
-    // 2. Design file required when Approved
-    const hasDesignFile = (() => {
-      if (product.designStatus !== "approved") return true; // Not approved = valid
-      
-      if (product.imlType === "LID & TUB") {
-        // LID & TUB: LID file MANDATORY
-        return !!product.lidDesignFile; 
-      } else {
-        // LID or TUB: ANY file (lid OR tub) is enough
-        return product.lidDesignFile || product.tubDesignFile;
-      }
-    })();
-    
-    // 3. Basic product fields
-    const hasProductName = product.productName;
-    const hasSize = product.size;
-    
-    return hasImlName && hasDesignFile && hasProductName && hasSize;
-  });
-  
-  // 4. Contact details
-  const contactValid = contact.company && contact.contactName && contact.phone;
-  
-  // 5. Order estimate
-  const estimateValid = orderEstimate.estimatedNumber && orderEstimate.estimatedValue > 0;
-
-  // NEW: Payment validation logic
-  const paymentValid = !hasAnyApprovedProduct() || hasPaymentRecord2();
-  
-  
-  const isValid = allProductsValid && contactValid && estimateValid && paymentValid;
-  console.log(`All products: ${allProductsValid}`);
-  console.log(`All contact: ${contactValid}`);
-  console.log(`All estimate valid: ${estimateValid}`);
-  setIsFormValid(isValid);
-  return isValid;
-}, [products, contact, orderEstimate, paymentRecords]);
-
-useEffect(() => {
-  validateForm();
-}, [products, contact, orderEstimate, paymentRecords, validateForm]);
-
   // auto set total estimated amount input field
   useEffect(() => {
     // Only auto-fill if no payments have been recorded yet
@@ -1542,11 +1474,12 @@ useEffect(() => {
                           required
                           placeholder="Select Type"
                           // options={["LID", "TUB", "LID & TUB"]}
-                          options={
-                              getAutoImlType(product.productName, product.size) === 'LID & TUB'
-                                ? ['LID', 'TUB', 'LID & TUB'] : getAutoImlType(product.productName, product.size) === 'LID' ? ['LID'] : // ALWAYS available for these products
-                                ['TUB']               // Limited for others
-                            }                          value={product.imlType}
+                           options={
+                              product.imlType === 'LID & TUB' 
+                                ? ['LID', 'TUB', 'LID & TUB'] 
+                                : [product.imlType]
+                            }
+                          value={product.imlType}
                           onChange={(e) => {
                             const newImlType = e.target.value;
                             // Check for duplicates
@@ -1593,7 +1526,6 @@ useEffect(() => {
                             type="text"
                             placeholder="Enter or Select IML Name"
                             value={product.imlName}
-                            required
                             onChange={(e) =>
                               handleImlNameInput(product.id, e.target.value)
                             }
@@ -2562,21 +2494,7 @@ useEffect(() => {
                                     "designSharedMail",
                                     e.target.checked
                                   );
-                                  const newValue = e.target.checked ? "pending" : "approved";
-                                  updateProduct(
-                                    product.id,
-                                    "designStatus",
-                                    newValue
-                                  );
-                                  const productIsPOUpdated = (product.orderStatus && (product.orderStatus !== "Artwork Pending" && product.orderStatus !== "Artwork Approved" ));
-                                  const orderStatusV = e.target.checked ? "Artwork Pending" : "Artwork Approved"
-                                  if (!productIsPOUpdated) {
-                                    updateProduct(
-                                      product.id,
-                                      "orderStatus",
-                                      orderStatusV
-                                    );
-                                  }
+
                                 }}
                                 className="w-[1.1vw] h-[1.1vw] cursor-pointer"
                               />
@@ -2592,19 +2510,22 @@ useEffect(() => {
                                 label="Design Status"
                                 required
                                 placeholder="Select Status"
-                                options={
-                                  product.designSharedMail 
-                                    ? ["Pending"]  // Checked → ONLY Pending
-                                    : ["Approved"] // Unchecked → ONLY Approved
-                                }
+                                options={["Pending", "Approved"]}
                                 value={
-                                  product.designStatus === "pending" ? "Pending" :
-                                  product.designStatus === "approved" ? "Approved" : ""
+                                  product.designStatus === "pending"
+                                    ? "Pending"
+                                    : product.designStatus === "approved"
+                                    ? "Approved"
+                                    : ""
                                 }
                                 onChange={(e) => {
                                   const newValue = e.target.value.toLowerCase();
+                                  updateProduct(
+                                    product.id,
+                                    "designStatus",
+                                    newValue
+                                  );
                                 }}
-                                
                               />
                             </div>
 
@@ -2631,7 +2552,7 @@ useEffect(() => {
                           </div>
 
                           {/* Design Upload Section - Conditional based on imlType */}
-                          {(product.designStatus === "approved" || !product.designSharedMail)&& (
+                          {product.designStatus === "approved" && (
                             <div className="mt-[1vw]">
                               {product.imlType === "LID & TUB" ? (
                                 // Show two separate upload sections for LID & TUB
@@ -2805,51 +2726,7 @@ useEffect(() => {
             title="Payment Details - Client Payments"
             styles={{ position: "relative" }}
           >
-           
-             {/* NEW RADIO BUTTONS */}
-            <div className="flex items-center gap-[1.5vw] mb-[1.5vw] p-[1vw] bg-gray-50 rounded-lg border border-gray-200 relative">
-              <label className="flex items-center gap-[0.75vw] cursor-pointer">
-                <input
-                  type="radio"
-                  name="paymentType"
-                  value="advance"
-                  checked={selectedPaymentType === 'advance'}
-                  onChange={(e) => setSelectedPaymentType(e.target.value)}
-                  className="w-[1.2vw] h-[1.2vw] text-blue-600"
-                />
-                <span className="text-[0.95vw] font-medium text-gray-700">Advance Payment</span>
-              </label>
-              <label className="flex items-center gap-[0.75vw] cursor-pointer">
-                <input
-                  type="radio" 
-                  name="paymentType"
-                  value="po"
-                  checked={selectedPaymentType === 'po'}
-                  onChange={(e) => setSelectedPaymentType(e.target.value)}
-                  className="w-[1.2vw] h-[1.2vw] text-blue-600"
-                />
-                <span className="text-[0.95vw] font-medium text-gray-700">PO</span>
-              </label>
-            <button
-              onClick={() => {
-                setBulkPayment({
-                  paymentType: selectedPaymentType,  // ✅ Sync with radio selection
-                  method: "",
-                  amount: "",
-                  remarks: "",
-                  file: null,
-                });
-                setShowPaymentModal(true)
-              }}
-              className="px-[.8vw] py-[.65vw] bg-green-600 text-white text-[.9vw] rounded-lg font-semibold hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 absolute top-[50%] right-[0%] translate-y-[-50%] cursor-pointer"
-            >
-              <span className="text-[1vw]">+</span>
-              Add {selectedPaymentType === 'advance' ? 'Advance' : 'PO'} Payment
-            </button>
-            </div>
-
- {/* Compact Summary Bar */}
-
+            {/* Compact Summary Bar */}
             <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-[0.5vw] px-[.5vw] py-[.75vw] mb-[1vw] w-fit pr-[2vw]">
               <div className="flex items-center gap-[2vw]">
                 <div className="flex items-center gap-[0.25vw]">
@@ -2873,6 +2750,14 @@ useEffect(() => {
                 </div>
               </div>
             </div>
+            <button
+              onClick={() => setShowPaymentModal(true)}
+              className="px-[.8vw] py-[.65vw] bg-green-600 text-white text-[.9vw] rounded-lg font-semibold hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 absolute top-[4vw] right-[2%] cursor-pointer"
+            >
+              <span className="text-[1vw]">+</span>
+              Add New Payment
+            </button>
+
             {/* Payment Records - Compact Table View */}
             {paymentRecords.length > 0 && (
               <div className="mt-[.25vw]">
@@ -3062,10 +2947,9 @@ useEffect(() => {
           </button>
           <button
             onClick={submitForm}
-            disabled={!isFormValid}
             className="px-[1.5vw] py-[0.65vw] bg-green-600 text-white border-none rounded-[0.5vw] text-[0.85vw] font-semibold cursor-pointer transition-all duration-200 hover:bg-green-700 shadow-md"
           >
-            {isFormValid ? 'Submit Order' : 'Complete All Fields First'}
+            Submit Order
           </button>
         </div>
       </div>
@@ -3075,7 +2959,6 @@ useEffect(() => {
         setShowPaymentModal={setShowPaymentModal}
         bulkPayment={bulkPayment}
         setBulkPayment={setBulkPayment}
-        bulkPaymentType={selectedPaymentType}
         addPaymentRecord={addPaymentRecord}
         calculateTotals={calculateTotals}
       />

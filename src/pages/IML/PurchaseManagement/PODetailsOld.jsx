@@ -32,13 +32,7 @@ const PODetails = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const {
-    orderId,
-    fromOrdersManagement = false,
-    returnSheet,
-    movedProductId = null,
-    mode = "",
-  } = location.state || {};
+  const { orderId, fromOrdersManagement = false, returnSheet } = location.state || {};
 
   // State for order data
   const [order, setOrder] = useState(null);
@@ -66,12 +60,10 @@ const PODetails = () => {
   // Autocomplete states for individual product rows
   const [activeAutocomplete, setActiveAutocomplete] = useState(null);
 
+  
   // Refs
   const globalLabelRef = useRef(null);
   const globalSupplierRef = useRef(null);
-
-  const hasPromptedRef = useRef(false);
-
 
   // Load fresh order data from localStorage
   useEffect(() => {
@@ -124,138 +116,19 @@ const PODetails = () => {
   }, [orderId]);
 
   // Load existing PO details
-  useEffect(() => {
-  if (!order) return;
+  // useEffect(() => {
+  //   if (order) {
+  //     const storedPO = localStorage.getItem(STORAGE_KEY_PO);
+  //     if (storedPO) {
+  //       const allPODetails = JSON.parse(storedPO);
+  //       const existingPO = allPODetails[order.id];
 
-  try {
-    const storedPO = localStorage.getItem(STORAGE_KEY_PO);
-    if (!storedPO) return;
-
-    const allPODetails = JSON.parse(storedPO);
-    const existingPO = allPODetails[order.id];
-
-    // ---- 1️⃣ Seed existing PO details (DO NOT overwrite blindly) ----
-    if (existingPO?.products) {
-      setProductPODetails((prev) => ({
-        ...prev,
-        ...existingPO.products,
-      }));
-    }
-
-    // ---- 2️⃣ Prompt only once, only from OrdersManagement ----
-    if (
-      !fromOrdersManagement ||
-      !existingPO?.products ||
-      hasPromptedRef.current
-    ) {
-      return;
-    }
-
-    const sourceProducts = [];
-    let sourcePO = null;
-
-    // ---- 3️⃣ Collect ALL products that already have PO details ----
-    for (const pid of Object.keys(existingPO.products)) {
-      const p = existingPO.products[pid];
-      if (!p) continue;
-
-      let poNumber = null;
-      let supplier = null;
-
-      if (p.poNumber && p.supplier) {
-        poNumber = p.poNumber;
-        supplier = p.supplier;
-      } else if (p.lid?.poNumber && p.lid?.supplier) {
-        poNumber = p.lid.poNumber;
-        supplier = p.lid.supplier;
-      } else if (p.tub?.poNumber && p.tub?.supplier) {
-        poNumber = p.tub.poNumber;
-        supplier = p.tub.supplier;
-      }
-
-      if (poNumber && supplier) {
-        const found = order.products?.find(
-          (x) => String(x.id) === String(pid)
-        );
-
-        sourceProducts.push({
-          id: pid,
-          name: found?.productName || found?.name || `#${pid}`,
-        });
-
-        // first valid PO becomes the copy source
-        if (!sourcePO) {
-          sourcePO = { poNumber, supplier };
-        }
-      }
-    }
-
-    if (!sourcePO || sourceProducts.length === 0) return;
-
-    // 🔒 lock prompt for this navigation
-    hasPromptedRef.current = true;
-
-    // ---- 4️⃣ Build multi-product confirmation message ----
-    const productListText = sourceProducts
-      .map((p) => `• ${p.name}`)
-      .join("\n");
-
-    const confirmMsg =
-      `PO details already exists:\n\n` +
-      
-      `Do you want to copy this PO number and supplier to all other products in this order that are being moved to purchase?\n\n` +
-      `Note: Label type will NOT be copied; it must be entered manually for each product.`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    // ---- 5️⃣ Copy PO number + supplier (NOT labelType) ----
-    setProductPODetails((prev) => {
-      const updated = { ...prev };
-
-      (order.products || [])
-        .filter((prod) => prod.moveToPurchase)
-        .forEach((prod) => {
-          const pid = prod.id;
-
-          if (!updated[pid]) {
-            updated[pid] =
-              prod.imlType === "LID & TUB"
-                ? {
-                    lid: { poNumber: "", labelType: "", supplier: "" },
-                    tub: { poNumber: "", labelType: "", supplier: "" },
-                  }
-                : { poNumber: "", labelType: "", supplier: "" };
-          }
-
-          if (prod.imlType === "LID & TUB") {
-            updated[pid].lid = {
-              ...updated[pid].lid,
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid].lid?.labelType || "",
-            };
-            updated[pid].tub = {
-              ...updated[pid].tub,
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid].tub?.labelType || "",
-            };
-          } else {
-            updated[pid] = {
-              ...updated[pid],
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid]?.labelType || "",
-            };
-          }
-        });
-
-      return updated;
-    });
-  } catch (err) {
-    console.error("Error loading existing PO details:", err);
-  }
-}, [order, fromOrdersManagement]);
+  //       if (existingPO?.products) {
+  //         setProductPODetails(existingPO.products);
+  //       }
+  //     }
+  //   }
+  // }, [order]);
 
   // Click outside to close suggestions
   useEffect(() => {
@@ -289,7 +162,7 @@ const PODetails = () => {
     }
 
     const filtered = LABEL_TYPE_OPTIONS.filter((type) =>
-      type.toLowerCase().includes(value.toLowerCase()),
+      type.toLowerCase().includes(value.toLowerCase())
     );
     setFilteredGlobalLabels(filtered);
     setShowGlobalLabelSuggestions(filtered.length > 0);
@@ -306,7 +179,7 @@ const PODetails = () => {
     }
 
     const filtered = SUPPLIER_OPTIONS.filter((supplier) =>
-      supplier.toLowerCase().includes(value.toLowerCase()),
+      supplier.toLowerCase().includes(value.toLowerCase())
     );
     setFilteredGlobalSuppliers(filtered);
     setShowGlobalSupplierSuggestions(filtered.length > 0);
@@ -314,66 +187,40 @@ const PODetails = () => {
 
   // Apply global values to all products
   const handleApplyToAll = () => {
-  if (!globalPONumber && !globalLabelType && !globalSupplier) {
-    alert("Please enter at least one value to apply to all products");
-    return;
-  }
+    if (!globalPONumber && !globalLabelType && !globalSupplier) {
+      alert("Please enter at least one value to apply to all products");
+      return;
+    }
 
-  const isSingleProductFlow = mode === "single-product" && movedProductId;
-
-  const targetProducts = isSingleProductFlow
-    ? order.products.filter(p => p.id === movedProductId)
-    : order.products.filter(p => p.moveToPurchase);
-
-  setProductPODetails((prev) => {
-    const updated = { ...prev };
-
-    targetProducts.forEach((product) => {
-      const pid = product.id;
-
-      // ---- ensure base structure exists ----
-      if (!updated[pid]) {
-        updated[pid] =
-          product.imlType === "LID & TUB"
-            ? {
-                lid: { poNumber: "", labelType: "", supplier: "" },
-                tub: { poNumber: "", labelType: "", supplier: "" },
-              }
-            : { poNumber: "", labelType: "", supplier: "" };
-      }
+    const updatedDetails = { ...productPODetails };
+    Object.keys(updatedDetails).forEach((productId) => {
+      const product = order.products.find((p) => p.id === parseInt(productId));
+      if (!product) return;
 
       if (product.imlType === "LID & TUB") {
-        updated[pid] = {
-          ...updated[pid],
-          lid: {
-            ...updated[pid].lid,
-            poNumber: globalPONumber || updated[pid].lid?.poNumber || "",
-            labelType: globalLabelType || updated[pid].lid?.labelType || "",
-            supplier: globalSupplier || updated[pid].lid?.supplier || "",
-          },
-          tub: {
-            ...updated[pid].tub,
-            poNumber: globalPONumber || updated[pid].tub?.poNumber || "",
-            labelType: globalLabelType || updated[pid].tub?.labelType || "",
-            supplier: globalSupplier || updated[pid].tub?.supplier || "",
-          },
-        };
+        if (globalPONumber) {
+          updatedDetails[productId].lid.poNumber = globalPONumber;
+          updatedDetails[productId].tub.poNumber = globalPONumber;
+        }
+        if (globalLabelType) {
+          updatedDetails[productId].lid.labelType = globalLabelType;
+          updatedDetails[productId].tub.labelType = globalLabelType;
+        }
+        if (globalSupplier) {
+          updatedDetails[productId].lid.supplier = globalSupplier;
+          updatedDetails[productId].tub.supplier = globalSupplier;
+        }
       } else {
-        updated[pid] = {
-          ...updated[pid],
-          poNumber: globalPONumber || updated[pid].poNumber || "",
-          labelType: globalLabelType || updated[pid].labelType || "",
-          supplier: globalSupplier || updated[pid].supplier || "",
-        };
+        if (globalPONumber) updatedDetails[productId].poNumber = globalPONumber;
+        if (globalLabelType)
+          updatedDetails[productId].labelType = globalLabelType;
+        if (globalSupplier) updatedDetails[productId].supplier = globalSupplier;
       }
     });
 
-    return updated;
-  });
-
-  alert("✅ Values applied to all applicable products!");
-};
-
+    setProductPODetails(updatedDetails);
+    alert("✅ Values applied to all products!");
+  };
 
   // Update individual product field
   const updateProductField = (productId, field, value, part = null) => {
@@ -413,7 +260,7 @@ const PODetails = () => {
     const options =
       field === "labelType" ? LABEL_TYPE_OPTIONS : SUPPLIER_OPTIONS;
     const filtered = options.filter((opt) =>
-      opt.toLowerCase().includes(value.toLowerCase()),
+      opt.toLowerCase().includes(value.toLowerCase())
     );
 
     if (filtered.length > 0) {
@@ -443,41 +290,40 @@ const PODetails = () => {
   };
 
   // Handle form submission
-  // ---------- REPLACE existing handleSubmit ----------
   const handleSubmit = () => {
-  const isSingleProductFlow = mode === "single-product" && movedProductId;
+    // Validate that all products have required fields
+    const purchaseProducts =
+      order.products?.filter((p) => p.moveToPurchase) || [];
+    const missingFields = [];
 
-  const activeProducts = isSingleProductFlow
-    ? order.products.filter(p => p.id === movedProductId)
-    : order.products.filter(p => p.moveToPurchase);
-
-  // ---------- VALIDATION ----------
-  const missingFields = [];
-
-  activeProducts.forEach((product) => {
-    const details = productPODetails[product.id];
-
-    if (product.imlType === "LID & TUB") {
-      const lid = details?.lid || {};
-      const tub = details?.tub || {};
-
-      if (!lid.poNumber || !lid.supplier || !tub.poNumber || !tub.supplier) {
-        missingFields.push(`${product.productName} (LID/TUB)`);
+    purchaseProducts.forEach((product) => {
+      const details = productPODetails[product.id];
+      if (product.imlType === "LID & TUB") {
+        const lid = details.lid || {};
+        const tub = details.tub || {};
+        if (
+          !lid.poNumber ||
+          !lid.labelType ||
+          !lid.supplier ||
+          !tub.poNumber ||
+          !tub.labelType ||
+          !tub.supplier
+        ) {
+          missingFields.push(`${product.productName} (LID/TUB)`);
+        }
+      } else {
+        if (!details?.poNumber || !details?.labelType || !details?.supplier) {
+          missingFields.push(product.productName);
+        }
       }
-    } else {
-      if (!details?.poNumber || !details?.supplier) {
-        missingFields.push(product.productName);
-      }
+    });
+
+    if (missingFields.length > 0) {
+      // alert(`⚠️ Please fill all fields for:\n${missingFields.join("\n")}`);
+      // return;
     }
-  });
 
-  // if (missingFields.length) {
-  //   alert(`Please fill required PO fields for:\n${missingFields.join("\n")}`);
-  //   return;
-  // }
-
-  try {
-    // ---------- SAVE PO DETAILS ----------
+    // Save to localStorage
     const storedPO = localStorage.getItem(STORAGE_KEY_PO);
     const allPODetails = storedPO ? JSON.parse(storedPO) : {};
 
@@ -490,64 +336,14 @@ const PODetails = () => {
     };
 
     localStorage.setItem(STORAGE_KEY_PO, JSON.stringify(allPODetails));
+
+    console.log("✅ PO saved:", allPODetails[order.id]);
     alert("✅ PO Details saved successfully!");
 
-    // ---------- UPDATE ORDER STATUS ----------
-    const storedOrdersStr = localStorage.getItem(STORAGE_KEY_ORDERS);
-    if (storedOrdersStr) {
-      const allOrders = JSON.parse(storedOrdersStr);
-
-      const updatedOrders = allOrders.map((o) => {
-        if (o.id !== order.id) return o;
-
-        return {
-          ...o,
-          products: o.products.map((prod) => {
-            if (isSingleProductFlow) {
-              return prod.id === movedProductId
-                ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-                : prod;
-            }
-
-            return prod.moveToPurchase
-              ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-              : prod;
-          }),
-        };
-      });
-
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
-      window.dispatchEvent(new Event("ordersUpdated"));
-
-      // update local state
-      setOrder((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          products: prev.products.map((prod) => {
-            if (isSingleProductFlow) {
-              return prod.id === movedProductId
-                ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-                : prod;
-            }
-
-            return prod.moveToPurchase
-              ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-              : prod;
-          }),
-        };
-      });
-    }
-
-    navigate("/iml/purchase", { state: { refreshOrders: true } });
-
-  } catch (err) {
-    console.error("Error saving PO details:", err);
-    alert("❌ Error saving PO details.");
-  }
-};
-
+    navigate("/iml/purchase", {
+      state: { refreshOrders: true },
+    });
+  };
 
   const handleBack = () => {
     navigate("/iml/purchase", {
@@ -775,7 +571,7 @@ const PODetails = () => {
                                       product.id,
                                       "poNumber",
                                       e.target.value,
-                                      "lid",
+                                      "lid"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -792,7 +588,7 @@ const PODetails = () => {
                                       product.id,
                                       "poNumber",
                                       e.target.value,
-                                      "tub",
+                                      "tub"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -808,7 +604,7 @@ const PODetails = () => {
                                 updateProductField(
                                   product.id,
                                   "poNumber",
-                                  e.target.value,
+                                  e.target.value
                                 )
                               }
                               className="border px-2 py-1 rounded text-sm"
@@ -832,7 +628,7 @@ const PODetails = () => {
                                       product.id,
                                       "labelType",
                                       e.target.value,
-                                      "lid",
+                                      "lid"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -851,14 +647,14 @@ const PODetails = () => {
                                               product.id,
                                               "labelType",
                                               opt,
-                                              "lid",
+                                              "lid"
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
@@ -875,7 +671,7 @@ const PODetails = () => {
                                       product.id,
                                       "labelType",
                                       e.target.value,
-                                      "tub",
+                                      "tub"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -894,14 +690,14 @@ const PODetails = () => {
                                               product.id,
                                               "labelType",
                                               opt,
-                                              "tub",
+                                              "tub"
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
@@ -916,7 +712,7 @@ const PODetails = () => {
                                   handleProductAutocomplete(
                                     product.id,
                                     "labelType",
-                                    e.target.value,
+                                    e.target.value
                                   )
                                 }
                                 className="border px-2 py-1 rounded text-sm"
@@ -932,14 +728,14 @@ const PODetails = () => {
                                             selectProductAutocomplete(
                                               product.id,
                                               "labelType",
-                                              opt,
+                                              opt
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
@@ -963,7 +759,7 @@ const PODetails = () => {
                                       product.id,
                                       "supplier",
                                       e.target.value,
-                                      "lid",
+                                      "lid"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -982,14 +778,14 @@ const PODetails = () => {
                                               product.id,
                                               "supplier",
                                               opt,
-                                              "lid",
+                                              "lid"
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
@@ -1006,7 +802,7 @@ const PODetails = () => {
                                       product.id,
                                       "supplier",
                                       e.target.value,
-                                      "tub",
+                                      "tub"
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
@@ -1025,14 +821,14 @@ const PODetails = () => {
                                               product.id,
                                               "supplier",
                                               opt,
-                                              "tub",
+                                              "tub"
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
@@ -1047,7 +843,7 @@ const PODetails = () => {
                                   handleProductAutocomplete(
                                     product.id,
                                     "supplier",
-                                    e.target.value,
+                                    e.target.value
                                   )
                                 }
                                 className="border px-2 py-1 rounded text-sm"
@@ -1063,14 +859,14 @@ const PODetails = () => {
                                             selectProductAutocomplete(
                                               product.id,
                                               "supplier",
-                                              opt,
+                                              opt
                                             )
                                           }
                                           className="px-2 py-1 hover:bg-purple-50 cursor-pointer"
                                         >
                                           {opt}
                                         </div>
-                                      ),
+                                      )
                                     )}
                                   </div>
                                 )}
