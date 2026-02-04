@@ -6,6 +6,7 @@ const STORAGE_KEY_PRODUCTION_FOLLOWUPS = "iml_production_followups";
 const STORAGE_KEY_LABEL_QTY = "iml_label_quantity_received";
 
 const STORAGE_KEY_REMAINING_PRODUCTION = "iml_remaining_production_followups";
+const STORAGE_KEY_IML = "imlorders";
 
 // Machine options
 const MACHINE_OPTIONS = ["01", "02", "03", "04", "05"];
@@ -834,6 +835,20 @@ const ProductionDetails = () => {
       </div>
     );
   }
+  const getProductStatus = () => {
+    const STORAGE_KEY_ORDERS = STORAGE_KEY_IML;
+    const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || "[]");
+    const order = orders.find(o => o.id === entry.orderId);
+    const product = order?.products?.find(p => p.id === entry.productId);
+    return product?.orderStatus;
+  };
+
+const productStatus = getProductStatus();
+const isInProduction = productStatus === "In Production";
+
+  console.log(`Entry: ${JSON.stringify(entry, null, 2)}`);
+
+  console.log(`Is in production: ${isInProduction}`);
 
   return (
     <div className="min-h-screen bg-gray-50 p-[1vw]">
@@ -873,8 +888,60 @@ const ProductionDetails = () => {
         <div className="p-[1.5vw] space-y-[1.5vw] max-h-[70vh] overflow-y-auto">
           {/* Customer Details */}
           <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-[0.6vw] border-2 border-purple-200 p-[1vw]">
-            <h3 className="text-[1.1vw] font-semibold text-purple-900 mb-[1vw] flex items-center gap-2">
+            <h3 className="text-[1.1vw] font-semibold text-purple-900 mb-[1vw] flex items-center gap-2 relative">
               <span className="text-[1.3vw]">📋</span> Customer Details
+              <button
+                className={`absolute right-0 px-[.85vw] py-[.35vw] text-[.85vw] rounded  transition-all ${
+                isInProduction
+                  ? "bg-green-600 text-white" // ✅ DISABLED STYLE
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
+                } ${isInProduction ? "opacity-75 cursor-not-allowed" : "cursor-pointer"}`}
+
+                onClick={() => {
+                  if (isInProduction) return null;
+                  // ✅ UPDATE PRODUCT STATUS TO "In Production"
+                  const STORAGE_KEY_ORDERS = "imlorders";
+                  const orderData = JSON.parse(
+                    localStorage.getItem(STORAGE_KEY_ORDERS) || "[]",
+                  );
+
+                  const updatedOrders = orderData.map((order) =>
+                    order.id === entry.orderId
+                      ? {
+                          ...order,
+                          products: order.products.map((product) =>
+                            product.id === entry.productId
+                              ? { ...product, orderStatus: "In Production" }
+                              : product,
+                          ),
+                        }
+                      : order,
+                  );
+
+                  // ✅ SAVE TO LOCALSTORAGE
+                  localStorage.setItem(
+                    STORAGE_KEY_ORDERS,
+                    JSON.stringify(updatedOrders),
+                  );
+
+                  // ✅ REFRESH PARENT WINDOW (OrdersManagement)
+                  if (
+                    window.opener &&
+                    window.opener.location.href.includes("orders")
+                  ) {
+                    window.opener.location.reload();
+                  } else {
+                    window.opener?.dispatchEvent?.(
+                      new CustomEvent("ordersUpdated"),
+                    );
+                  }
+
+                  alert("✅ Product marked as In Production!");
+                  navigate("/iml/production", { state: { refreshData: true } });
+                }}
+              >
+                {isInProduction ? "Marked as In Production": "Mark as In Production"}
+              </button>
             </h3>
             <div className="grid grid-cols-4 gap-[1vw]">
               <div>

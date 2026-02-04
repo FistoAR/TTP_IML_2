@@ -64,7 +64,7 @@ const LabelQuantitySheet = () => {
       if (found) {
         setOrder(found);
         setCompanyName(
-          found.contact?.company || incomingCompany || "Unknown Company"
+          found.contact?.company || incomingCompany || "Unknown Company",
         );
       }
     } finally {
@@ -75,7 +75,7 @@ const LabelQuantitySheet = () => {
   // Build dropdown options from this order’s products moved to purchase
   const purchaseProducts = useMemo(
     () => order?.products?.filter((p) => p.moveToPurchase) || [],
-    [order]
+    [order],
   );
 
   const categories = useMemo(() => {
@@ -98,7 +98,7 @@ const LabelQuantitySheet = () => {
 
     if (selectedCategory && selectedSize) {
       const match = purchaseProducts.find(
-        (p) => p.productName === selectedCategory && p.size === selectedSize
+        (p) => p.productName === selectedCategory && p.size === selectedSize,
       );
       setCurrentProduct(match || null);
     } else {
@@ -221,6 +221,7 @@ const LabelQuantitySheet = () => {
         tubReceivedQuantity: tubVal,
         productComplete: finalizeProduct ? true : productComplete,
         updatedAt: now,
+        productComplete: true, 
         // append to history array inline
         history: [
           ...(all[prodKey]?.history || []),
@@ -239,7 +240,6 @@ const LabelQuantitySheet = () => {
 
       setLidQtyReceived("");
       setTubQtyReceived("");
-
     } else {
       const qtyVal = parseInt(singleQtyReceived || "0", 10);
       if (isNaN(qtyVal) || qtyVal <= 0) {
@@ -287,9 +287,38 @@ const LabelQuantitySheet = () => {
     localStorage.setItem(STORAGE_KEY_LABEL_QTY, JSON.stringify(all));
     loadHistoryAndCompletion();
 
-    alert(
-      finalizeProduct ? "✅ Product marked complete!" : "💾 Saved successfully!"
+    // alert(
+    //   finalizeProduct ? "✅ Product marked complete!" : "💾 Saved successfully!"
+    // );
+      if (finalizeProduct || productComplete) {
+    const orderData = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || "[]");
+    const updatedOrders = orderData.map((o) =>
+      o.id === orderId
+        ? {
+            ...o,
+            products: o.products.map((p) =>
+                p.id === currentProduct.id
+                  ? { ...p, orderStatus: "Production Pending" }
+                  : p
+              )
+          }
+        : o
     );
+
+    localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+    
+    // Refresh parent window
+    if (window.opener && window.opener.location.href.includes('orders')) {
+      window.opener.location.reload();
+    } else {
+      window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
+    }
+
+    alert("✅ Product complete! Status → Production Pending");
+  } else {
+    alert("💾 Saved successfully!");
+  }
+
   };
 
   // Global completion toggle (order-wide)
@@ -317,11 +346,30 @@ const LabelQuantitySheet = () => {
     localStorage.setItem(STORAGE_KEY_LABEL_QTY, JSON.stringify(all));
     setGlobalComplete(checked);
     loadHistoryAndCompletion();
-    alert(
-      checked
-        ? "✅ All products marked as complete for this order!"
-        : "⏸️ Global completion removed."
-    );
+
+    if (checked) {
+      const orderData = JSON.parse(
+        localStorage.getItem(STORAGE_KEY_ORDERS) || "[]",
+      );
+      const updatedOrders = orderData.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              products: o.products.map((p) => ({
+                ...p,
+                orderStatus: "Production Pending",
+              })),
+            }
+          : o,
+      );
+
+      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+      window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
+
+      alert("✅ All products complete! All → Production Pending");
+    } else {
+      alert("⏸️ Global completion removed.");
+    }
   };
 
   const handleBack = () => {
@@ -526,8 +574,8 @@ const LabelQuantitySheet = () => {
                                 currentProduct.tubLabelQty || 0
                               }`
                             : currentProduct.imlType.includes("LID")
-                            ? currentProduct.lidLabelQty || 0
-                            : currentProduct.tubLabelQty || 0}
+                              ? currentProduct.lidLabelQty || 0
+                              : currentProduct.tubLabelQty || 0}
                         </div>
                       </div>
                     </div>
@@ -685,14 +733,12 @@ const LabelQuantitySheet = () => {
                     <tbody>
                       {visibleHistory.map((entry, idx) => {
                         const dateText =
-                          new Date(entry.date).toLocaleDateString(
-                            "en-IN"
-                          ) +
+                          new Date(entry.date).toLocaleDateString("en-IN") +
                           " " +
-                          new Date(entry.date).toLocaleTimeString(
-                            "en-IN",
-                            { hour: "2-digit", minute: "2-digit" }
-                          );
+                          new Date(entry.date).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          });
 
                         // const dateN = entry.date;
 
