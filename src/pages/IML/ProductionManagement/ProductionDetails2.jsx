@@ -1,5 +1,5 @@
 // ProductionDetails.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 const STORAGE_KEY_PRODUCTION_FOLLOWUPS = "iml_production_followups";
@@ -12,13 +12,6 @@ const STORAGE_KEY_IML = "imlorders";
 const MACHINE_OPTIONS = ["01", "02", "03", "04", "05"];
 
 // Received By options
-const RECEIVED_BY_OPTIONS = ["Murali", "Praveen", "Kumar", "Ravi"];
-
-// Packing Incharge options
-const PACKING_INCHARGE_OPTIONS = ["Murugan", "Praveen", "Ravi", "Kumar"];
-
-// Approved By options
-const APPROVED_BY_OPTIONS = ["Murugan", "Praveen", "Ravi", "Kumar"];
 
 // Helper: parse number safely
 const toNumber = (value) => {
@@ -103,58 +96,54 @@ const ProductionDetails = () => {
   const [allocatedLid, setAllocatedLid] = useState(0);
   const [allocatedTub, setAllocatedTub] = useState(0);
 
+  const [receivedByOptions, setReceivedByOptions] = useState([
+    "Murali",
+    "Praveen",
+    "Kumar",
+    "Ravi",
+  ]);
+  const [packingInchargeOptions, setPackingInchargeOptions] = useState([
+    "Murugan",
+    "Praveen",
+    "Ravi",
+    "Kumar",
+  ]);
+  const [approvedByOptions, setApprovedByOptions] = useState([
+    "Murugan",
+    "Praveen",
+    "Ravi",
+    "Kumar",
+  ]);
+
   const [lidProductionQty, setLidProductionQty] = useState(0);
   const [tubProductionQty, setTubProductionQty] = useState(0);
   const [totalProductionQty, setTotalProductionQty] = useState(0);
 
-  // const getTotalLabels = (orderId, productId) => {
-  //   const labelData = JSON.parse(
-  //     localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}"
-  //   );
+  const [showPersonManager, setShowPersonManager] = useState(false);
+  const [newPerson, setNewPerson] = useState("");
+  const [personType, setPersonType] = useState("received"); // received, packing, approved
 
-  //   // ONLY look at EXACT key for this order+product
-  //   const exactKey = `${orderId}_${productId}`;
-  //   const item = labelData[exactKey];
+  // ✅ TOTAL LABELS RECEIVED - NEW FEATURE
+  const [totalLabelsReceived, setTotalLabelsReceived] = useState({
+    lid: 0,
+    tub: 0,
+    single: 0,
+  });
 
-  //   if (!item) {
-  //     console.log("❌ No data found for key:", exactKey);
-  //     return { lidTotal: 0, tubTotal: 0 };
-  //   }
+  // Load from localStorage on mount
+  useEffect(() => {
+    if (entry) {
+      const prodKey = `${entry.orderId}_${entry.productId}`;
+      const saved = JSON.parse(
+        localStorage.getItem("iml_total_labels_received") || "{}",
+      );
+      const savedData = saved[prodKey];
 
-  //   let lidTotal = 0;
-  //   let tubTotal = 0;
-
-  //   // **ONLY** sum HISTORY entries - NO outer item quantity
-  //   if (item.history && Array.isArray(item.history)) {
-  //     item.history.forEach((h, idx) => {
-  //       if (h.imlType === "LID & TUB") {
-  //         // LID & TUB: Separate counts
-  //         lidTotal += Number(h.lidReceivedQuantity || 0);
-  //         tubTotal += Number(h.tubReceivedQuantity || 0);
-  //       } else {
-  //         // Single type: add to both (for backward compatibility)
-  //         const qty = Number(
-  //           h.receivedQuantity ||
-  //             h.lidReceivedQuantity ||
-  //             h.tubReceivedQuantity ||
-  //             0
-  //         );
-  //         if (qty > 0) {
-  //           lidTotal += qty;
-  //           tubTotal += qty;
-  //         }
-  //       }
-  //     });
-  //   }
-
-  //   console.log(`✅ LID TOTAL for ${exactKey}: ${lidTotal}`);
-  //   console.log(`✅ TUB TOTAL for ${exactKey}: ${tubTotal}`);
-  //   return { lidTotal, tubTotal };
-  // };
-
-  // Check if entry is LID & TUB type
-
-  // ProductionDetails2.jsx - Update the getTotalLabels function
+      if (savedData) {
+        setTotalLabelsReceived(savedData);
+      }
+    }
+  }, [entry]);
 
   const getTotalLabels = (orderId, productId, entryData) => {
     // If we have pre-calculated values from ProductionManagement, use them directly
@@ -306,36 +295,66 @@ const ProductionDetails = () => {
       setLidQuantity(labelTotals.lidQuantity);
       setTubQuantity(labelTotals.tubQuantity);
 
-      // Calculate used labels from entries
+      const prodKey = `${entry.orderId}_${entry.productId}`;
+      const savedLabels = JSON.parse(localStorage.getItem('iml_total_labels_received') || '{}');
+      const savedTotalLabels = savedLabels[prodKey] || { lid: 0, tub: 0, single: 0 };
+      setTotalLabelsReceived(savedTotalLabels);
+
+      // ✅ RECALCULATE REMAINING using NEW totals
       const lidUsed = entriesHistory.reduce((sum, e) => {
         if (e.componentType === "LID" || e.componentType === "SINGLE") {
-          const accepted = toNumber(e.acceptedComponents);
-          return sum + accepted;
+          return sum + toNumber(e.acceptedComponents);
         }
         return sum;
       }, 0);
 
       const tubUsed = entriesHistory.reduce((sum, e) => {
         if (e.componentType === "TUB") {
-          const accepted = toNumber(e.acceptedComponents);
-          return sum + accepted;
+          return sum + toNumber(e.acceptedComponents);
         }
         return sum;
       }, 0);
 
-      // Set remaining labels
       if (isLidAndTub) {
-        const remainingLid = Math.max(labelTotals.lidQuantity - lidUsed, 0);
-        const remainingTub = Math.max(labelTotals.tubQuantity - tubUsed, 0);
-        setRemainingLidLabels(remainingLid);
-        setRemainingTubLabels(remainingTub);
-        setLidProductionQty(labelTotals.lidQuantity);
+        setRemainingLidLabels(Math.max(savedTotalLabels.lid - lidUsed, 0));
+        setRemainingTubLabels(Math.max(savedTotalLabels.tub - tubUsed, 0));
+           setLidProductionQty(labelTotals.lidQuantity);
         setTubProductionQty(labelTotals.tubQuantity);
       } else {
-        const remaining = Math.max(labelTotals.totalQuantity - lidUsed, 0);
-        setRemainingLidLabels(remaining);
-        setTotalProductionQty(labelTotals.totalQuantity);
+        setRemainingLidLabels(Math.max(savedTotalLabels.single - lidUsed, 0));
+           setTotalProductionQty(labelTotals.totalQuantity);
       }
+
+      // Calculate used labels from entries
+      // const lidUsed = entriesHistory.reduce((sum, e) => {
+      //   if (e.componentType === "LID" || e.componentType === "SINGLE") {
+      //     const accepted = toNumber(e.acceptedComponents);
+      //     return sum + accepted;
+      //   }
+      //   return sum;
+      // }, 0);
+
+      // const tubUsed = entriesHistory.reduce((sum, e) => {
+      //   if (e.componentType === "TUB") {
+      //     const accepted = toNumber(e.acceptedComponents);
+      //     return sum + accepted;
+      //   }
+      //   return sum;
+      // }, 0);
+
+      // // Set remaining labels
+      // if (isLidAndTub) {
+      //   const remainingLid = Math.max(labelTotals.lidQuantity - lidUsed, 0);
+      //   const remainingTub = Math.max(labelTotals.tubQuantity - tubUsed, 0);
+      //   setRemainingLidLabels(remainingLid);
+      //   setRemainingTubLabels(remainingTub);
+      //   setLidProductionQty(labelTotals.lidQuantity);
+      //   setTubProductionQty(labelTotals.tubQuantity);
+      // } else {
+      //   const remaining = Math.max(labelTotals.totalQuantity - lidUsed, 0);
+      //   setRemainingLidLabels(remaining);
+      //   setTotalProductionQty(labelTotals.totalQuantity);
+      // }
 
       // Prefill customer form with the correct values
       setCustomerForm({
@@ -362,6 +381,33 @@ const ProductionDetails = () => {
       });
     }
   }, [entry]);
+
+  useEffect(() => {
+    const loadPersons = () => {
+      setReceivedByOptions(
+        JSON.parse(
+          localStorage.getItem("iml_received_persons") ??
+            JSON.stringify(["Murali", "Praveen", "Kumar", "Ravi"]),
+        ),
+      );
+
+      setPackingInchargeOptions(
+        JSON.parse(
+          localStorage.getItem("iml_packing_persons") ??
+            JSON.stringify(["Murugan", "Praveen", "Ravi", "Kumar"]),
+        ),
+      );
+
+      setApprovedByOptions(
+        JSON.parse(
+          localStorage.getItem("iml_approved_persons") ??
+            JSON.stringify(["Murugan", "Praveen", "Ravi", "Kumar"]),
+        ),
+      );
+    };
+
+    loadPersons();
+  }, []);
 
   // Handle customer form changes
   const handleCustomerChange = (e) => {
@@ -546,8 +592,9 @@ const ProductionDetails = () => {
       return sum;
     }, 0);
 
-    const remainingLid = Math.max(lidQuantity - lidUsed, 0);
+    const remainingLid = Math.max(totalLabelsReceived.lid - lidUsed, 0);
     setRemainingLidLabels(remainingLid);
+    checkAndUpdateOrderStatus();
     setCustomerForm((prev) => ({ ...prev, lidRemaining: remainingLid }));
 
     // Clear LID entry form
@@ -626,8 +673,9 @@ const ProductionDetails = () => {
       return sum;
     }, 0);
 
-    const remainingTub = Math.max(tubQuantity - tubUsed, 0);
+    const remainingTub = Math.max(totalLabelsReceived.tub - tubUsed, 0);
     setRemainingTubLabels(remainingTub);
+    checkAndUpdateOrderStatus();
     setCustomerForm((prev) => ({ ...prev, tubRemaining: remainingTub }));
 
     // Clear TUB entry form
@@ -701,8 +749,9 @@ const ProductionDetails = () => {
       return sum + accepted;
     }, 0);
 
-    const remaining = Math.max(totalQuantity - usedLabels, 0); // Use totalQuantity instead of labelTotals.lidTotal
+    const remaining = Math.max(totalLabelsReceived.single - usedLabels, 0); // Use totalQuantity instead of labelTotals.lidTotal
     setRemainingLidLabels(remaining);
+    checkAndUpdateOrderStatus();
     setCustomerForm((prev) => ({ ...prev, lidRemaining: remaining }));
 
     // Clear entry form
@@ -838,13 +887,106 @@ const ProductionDetails = () => {
   const getProductStatus = () => {
     const STORAGE_KEY_ORDERS = STORAGE_KEY_IML;
     const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || "[]");
-    const order = orders.find(o => o.id === entry.orderId);
-    const product = order?.products?.find(p => p.id === entry.productId);
+    const order = orders.find((o) => o.id === entry.orderId);
+    const product = order?.products?.find((p) => p.id === entry.productId);
     return product?.orderStatus;
   };
 
-const productStatus = getProductStatus();
-const isInProduction = productStatus === "In Production";
+  // ✅ FIXED: Remove problematic dependencies
+const handleTotalLabelsChange = useCallback((type) => (e) => {
+  const val = parseInt(e.target.value) || 0;
+  
+  // Update state FIRST (immediate)
+  setTotalLabelsReceived(prev => { 
+    const newState = { ...prev, [type]: val };
+    
+    // Auto-save INSIDE updater (stable)
+    const prodKey = `${entry?.orderId}_${entry?.productId}`;
+    const saved = JSON.parse(localStorage.getItem('iml_total_labels_received') || '{}');
+    saved[prodKey] = newState;
+    localStorage.setItem('iml_total_labels_received', JSON.stringify(saved));
+    
+    return newState;
+  });
+
+  // Recalculate remaining using functional updates
+  if (isLidAndTub) {
+    if (type === 'lid') {
+      setRemainingLidLabels(prevRemaining => {
+        const lidUsed = productionEntries.reduce((sum, e) => 
+          (e.componentType === "LID" || e.componentType === "SINGLE") ? sum + toNumber(e.acceptedComponents) : sum, 0
+        );
+        return Math.max(val - lidUsed, 0);
+      });
+    } else if (type === 'tub') {
+      setRemainingTubLabels(prevRemaining => {
+        const tubUsed = productionEntries.reduce((sum, e) => 
+          e.componentType === "TUB" ? sum + toNumber(e.acceptedComponents) : sum, 0
+        );
+        return Math.max(val - tubUsed, 0);
+      });
+    }
+  } else {
+    setRemainingLidLabels(prevRemaining => {
+      const used = productionEntries.reduce((sum, e) => 
+        (e.componentType === "LID" || e.componentType === "SINGLE") ? sum + toNumber(e.acceptedComponents) : sum, 0
+      );
+      return Math.max(val - used, 0);
+    });
+  }
+}, [entry?.orderId, entry?.productId]); // ✅ ONLY stable deps
+
+const checkAndUpdateOrderStatus = useCallback(() => {
+  if (!entry?.orderId || !entry?.productId) return;
+  
+  const lidRemaining = remainingLidLabels;
+  const tubRemaining = remainingTubLabels || 0;
+  
+  // For LID&TUB: Both must be 0
+  // For SINGLE: lidRemaining must be 0
+  const allRemainingZero = isLidAndTub 
+    ? (lidRemaining === 0 && tubRemaining === 0)
+    : (lidRemaining === 0);
+
+  if (allRemainingZero) {
+    // ✅ UPDATE ORDER STATUS TO "Dispatch Pending"
+    const STORAGE_KEY_ORDERS = 'imlorders';
+    const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || '[]');
+    
+    const updatedOrders = orders.map(order => {
+      if (order.id === entry.orderId) {
+        return {
+          ...order,
+          products: order.products.map(product => {
+            if (product.id === entry.productId) {
+              return {
+                ...product,
+                orderStatus: 'Dispatch Pending'
+              };
+            }
+            return product;
+          })
+        };
+      }
+      return order;
+    });
+    
+    // Save back to localStorage
+    localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+    
+    console.log(`✅ Product ${entry.productId} updated to "Dispatch Pending" - All labels completed!`);
+    
+    // Refresh parent window if exists
+    if (window.opener && window.opener.location.href.includes('orders')) {
+      window.opener.location.reload();
+    }
+  }
+}, [entry?.orderId, entry?.productId, remainingLidLabels, remainingTubLabels, isLidAndTub]);
+
+
+
+  const productStatus = getProductStatus();
+  const isInProduction = productStatus === "In Production";
 
   console.log(`Entry: ${JSON.stringify(entry, null, 2)}`);
 
@@ -890,58 +1032,76 @@ const isInProduction = productStatus === "In Production";
           <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-[0.6vw] border-2 border-purple-200 p-[1vw]">
             <h3 className="text-[1.1vw] font-semibold text-purple-900 mb-[1vw] flex items-center gap-2 relative">
               <span className="text-[1.3vw]">📋</span> Customer Details
-              <button
-                className={`absolute right-0 px-[.85vw] py-[.35vw] text-[.85vw] rounded  transition-all ${
-                isInProduction
-                  ? "bg-green-600 text-white" // ✅ DISABLED STYLE
-                  : "bg-blue-600 hover:bg-blue-700 text-white"
-                } ${isInProduction ? "opacity-75 cursor-not-allowed" : "cursor-pointer"}`}
+              {/* 🚀 SINGLE ADD PERSON BUTTON - TOP RIGHT */}
+              <div className="flex justify-end absolute right-0 gap-[1vw]">
+                <button
+                  onClick={() => {
+                    setPersonType("received"); // Show all categories
+                    setNewPerson("");
+                    setShowPersonManager(true);
+                  }}
+                  className="flex items-center gap-[0.5vw] px-[.85vw] py-[0.35vw] bg-amber-500 text-white rounded-[0.6vw] font-semibold text-[0.9vw] transition-all cursor-pointer"
+                >
+                  <span className="text-[1.1vw]">+</span>
+                  Add Person
+                </button>
 
-                onClick={() => {
-                  if (isInProduction) return null;
-                  // ✅ UPDATE PRODUCT STATUS TO "In Production"
-                  const STORAGE_KEY_ORDERS = "imlorders";
-                  const orderData = JSON.parse(
-                    localStorage.getItem(STORAGE_KEY_ORDERS) || "[]",
-                  );
-
-                  const updatedOrders = orderData.map((order) =>
-                    order.id === entry.orderId
-                      ? {
-                          ...order,
-                          products: order.products.map((product) =>
-                            product.id === entry.productId
-                              ? { ...product, orderStatus: "In Production" }
-                              : product,
-                          ),
-                        }
-                      : order,
-                  );
-
-                  // ✅ SAVE TO LOCALSTORAGE
-                  localStorage.setItem(
-                    STORAGE_KEY_ORDERS,
-                    JSON.stringify(updatedOrders),
-                  );
-
-                  // ✅ REFRESH PARENT WINDOW (OrdersManagement)
-                  if (
-                    window.opener &&
-                    window.opener.location.href.includes("orders")
-                  ) {
-                    window.opener.location.reload();
-                  } else {
-                    window.opener?.dispatchEvent?.(
-                      new CustomEvent("ordersUpdated"),
+                <button
+                  className={` px-[.85vw] py-[.35vw] text-[.85vw] rounded-[0.6vw]  transition-all ${
+                    isInProduction
+                      ? "bg-green-600 text-white" // ✅ DISABLED STYLE
+                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                  } ${isInProduction ? "opacity-75 cursor-not-allowed" : "cursor-pointer"}`}
+                  onClick={() => {
+                    if (isInProduction) return null;
+                    // ✅ UPDATE PRODUCT STATUS TO "In Production"
+                    const STORAGE_KEY_ORDERS = "imlorders";
+                    const orderData = JSON.parse(
+                      localStorage.getItem(STORAGE_KEY_ORDERS) || "[]",
                     );
-                  }
 
-                  alert("✅ Product marked as In Production!");
-                  navigate("/iml/production", { state: { refreshData: true } });
-                }}
-              >
-                {isInProduction ? "Marked as In Production": "Mark as In Production"}
-              </button>
+                    const updatedOrders = orderData.map((order) =>
+                      order.id === entry.orderId
+                        ? {
+                            ...order,
+                            products: order.products.map((product) =>
+                              product.id === entry.productId
+                                ? { ...product, orderStatus: "In Production" }
+                                : product,
+                            ),
+                          }
+                        : order,
+                    );
+
+                    // ✅ SAVE TO LOCALSTORAGE
+                    localStorage.setItem(
+                      STORAGE_KEY_ORDERS,
+                      JSON.stringify(updatedOrders),
+                    );
+
+                    // ✅ REFRESH PARENT WINDOW (OrdersManagement)
+                    if (
+                      window.opener &&
+                      window.opener.location.href.includes("orders")
+                    ) {
+                      window.opener.location.reload();
+                    } else {
+                      window.opener?.dispatchEvent?.(
+                        new CustomEvent("ordersUpdated"),
+                      );
+                    }
+
+                    alert("✅ Product marked as In Production!");
+                    navigate("/iml/production", {
+                      state: { refreshData: true },
+                    });
+                  }}
+                >
+                  {isInProduction
+                    ? "Marked as In Production"
+                    : "Mark as In Production"}
+                </button>
+              </div>
             </h3>
             <div className="grid grid-cols-4 gap-[1vw]">
               <div>
@@ -1012,52 +1172,93 @@ const isInProduction = productStatus === "In Production";
 
               {/* Production Quantity based on IML Type */}
               {isLidAndTub ? (
+                // LID & TUB - 4 inputs in 2 rows
                 <>
+                <div className="grid grid-cols-2 gap-[.85vw]">
+                  {/* Row 1: LID */}
                   <div>
-                    <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                      LID Production Quantity
+                    <label className="block text-[.745vw] font-medium text-gray-700 mb-[0.3vw]">
+                      LID Production Qty
                     </label>
                     <input
                       type="text"
-                      name="lidTotalLabels"
                       value={formatNumber(lidProductionQty)}
-                      onChange={handleCustomerChange}
                       disabled
                       className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800"
                     />
                   </div>
                   <div>
-                    <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                      TUB Production Quantity
+                    <label className="block text-[.745vw] font-semibold text-blue-700 mb-[0.3vw] flex items-center gap-1">
+                      Total LID Labels Received                      
+                    </label>
+                    <input
+                      type="number"
+                      value={totalLabelsReceived.lid}
+                      onChange={handleTotalLabelsChange("lid")}
+                      min="0"
+                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold text-blue-800"
+                      placeholder="Enter total LID received"
+                    />
+                  </div>
+
+                </div>
+                <div className="grid grid-cols-2 gap-[.85vw]">
+                  {/* Row 2: TUB */}
+                  <div>
+                    <label className="block text-[.745vw] font-medium text-gray-700 mb-[0.3vw]">
+                      TUB Production Qty
                     </label>
                     <input
                       type="text"
-                      name="tubTotalLabels"
                       value={formatNumber(tubProductionQty)}
-                      onChange={handleCustomerChange}
                       disabled
-                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-100 border border-blue-300 rounded-[0.4vw] font-bold text-blue-800"
+                      className="w-full text-[.745vw] px-[0.75vw] py-[0.4vw] bg-blue-100 border border-blue-300 rounded-[0.4vw] font-bold text-blue-800"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-[.745vw] font-semibold text-purple-700 mb-[0.3vw] flex items-center gap-1">
+                      Total TUB Labels Received
+                      
+                    </label>
+                    <input
+                      type="number"
+                      value={totalLabelsReceived.tub}
+                      onChange={handleTotalLabelsChange("tub")}
+                      min="0"
+                      className="w-full text-[.745vw] px-[0.75vw] py-[0.4vw] bg-purple-50 border-2 border-purple-300 rounded-[0.4vw] focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-semibold text-purple-800"
+                      placeholder="Enter total TUB received"
+                    />
+                  </div>
                   </div>
                 </>
               ) : (
-                <div>
-                  <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
-                    Production Quantity
-                    {entry?.imlType && (
-                      <span className="ml-2 text-[.7vw] text-gray-500">
-                        ({entry.imlType})
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    name="productionQuantity"
-                    value={formatNumber(totalProductionQty)}
-                    onChange={handleCustomerChange}
-                    disabled
-                    className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800"
-                  />
+                // SINGLE TYPE - 2 inputs
+                <div className="grid grid-cols-2 gap-[.85vw]">
+                  <div>
+                    <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">
+                      Production Qty {entry?.imlType}
+                    </label>
+                    <input
+                      type="text"
+                      value={formatNumber(totalProductionQty)}
+                      disabled
+                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[.8vw] font-semibold text-blue-700 mb-[0.3vw] flex items-center gap-1">
+                      Total Labels Received{" "}
+                      <span className="text-blue-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={totalLabelsReceived.single}
+                      onChange={handleTotalLabelsChange("single")}
+                      min="0"
+                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-semibold text-blue-800"
+                      placeholder="Enter total received"
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -1107,7 +1308,7 @@ const isInProduction = productStatus === "In Production";
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-green-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-green-500"
                   >
                     <option value="">Select Person</option>
-                    {RECEIVED_BY_OPTIONS.map((person) => (
+                    {receivedByOptions.map((person) => (
                       <option key={`lid-${person}`} value={person}>
                         {person}
                       </option>
@@ -1157,7 +1358,7 @@ const isInProduction = productStatus === "In Production";
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-blue-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Person</option>
-                    {RECEIVED_BY_OPTIONS.map((person) => (
+                    {receivedByOptions.map((person) => (
                       <option key={`tub-${person}`} value={person}>
                         {person}
                       </option>
@@ -1209,7 +1410,7 @@ const isInProduction = productStatus === "In Production";
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] cursor-pointer"
                   >
                     <option value="">Select Person</option>
-                    {RECEIVED_BY_OPTIONS.map((person) => (
+                    {receivedByOptions.map((person) => (
                       <option key={person} value={person}>
                         {person}
                       </option>
@@ -1235,7 +1436,7 @@ const isInProduction = productStatus === "In Production";
                 {/* LID Entry Form */}
                 <div className="mb-[1.5vw] p-[0.8vw] bg-gradient-to-br from-green-50 to-emerald-50 rounded-[0.5vw] border-2 border-green-200">
                   <h4 className="text-[1vw] font-semibold text-green-800 mb-[0.8vw] flex items-center gap-2">
-                    <span className="text-[1.1vw]">🟢</span> LID Entry
+                    LID Entry
                     <span className="text-[.8vw] text-green-600 ml-2">
                       Machine: {customerForm.lidMachineNumber || "Not set"} |
                       Received By: {customerForm.lidReceivedBy || "Not set"}
@@ -1335,7 +1536,7 @@ const isInProduction = productStatus === "In Production";
                         className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-green-500"
                       >
                         <option value="">Select Incharge</option>
-                        {PACKING_INCHARGE_OPTIONS.map((person) => (
+                        {packingInchargeOptions.map((person) => (
                           <option key={`lid-packing-${person}`} value={person}>
                             {person}
                           </option>
@@ -1353,7 +1554,7 @@ const isInProduction = productStatus === "In Production";
                         className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-green-500"
                       >
                         <option value="">Select Approver</option>
-                        {APPROVED_BY_OPTIONS.map((person) => (
+                        {approvedByOptions.map((person) => (
                           <option key={`lid-approved-${person}`} value={person}>
                             {person}
                           </option>
@@ -1374,7 +1575,7 @@ const isInProduction = productStatus === "In Production";
                 {/* TUB Entry Form */}
                 <div className="p-[0.8vw] bg-gradient-to-br from-blue-50 to-cyan-50 rounded-[0.5vw] border-2 border-blue-200">
                   <h4 className="text-[1vw] font-semibold text-blue-800 mb-[0.8vw] flex items-center gap-2">
-                    <span className="text-[1.1vw]">🔵</span> TUB Entry
+                    TUB Entry
                     <span className="text-[.8vw] text-blue-600 ml-2">
                       Machine: {customerForm.tubMachineNumber || "Not set"} |
                       Received By: {customerForm.tubReceivedBy || "Not set"}
@@ -1474,7 +1675,7 @@ const isInProduction = productStatus === "In Production";
                         className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">Select Incharge</option>
-                        {PACKING_INCHARGE_OPTIONS.map((person) => (
+                        {packingInchargeOptions.map((person) => (
                           <option key={`tub-packing-${person}`} value={person}>
                             {person}
                           </option>
@@ -1492,7 +1693,7 @@ const isInProduction = productStatus === "In Production";
                         className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">Select Approver</option>
-                        {APPROVED_BY_OPTIONS.map((person) => (
+                        {approvedByOptions.map((person) => (
                           <option key={`tub-approved-${person}`} value={person}>
                             {person}
                           </option>
@@ -1606,7 +1807,7 @@ const isInProduction = productStatus === "In Production";
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Incharge</option>
-                    {PACKING_INCHARGE_OPTIONS.map((person) => (
+                    {packingInchargeOptions.map((person) => (
                       <option key={`single-packing-${person}`} value={person}>
                         {person}
                       </option>
@@ -1624,7 +1825,7 @@ const isInProduction = productStatus === "In Production";
                     className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select Approver</option>
-                    {APPROVED_BY_OPTIONS.map((person) => (
+                    {approvedByOptions.map((person) => (
                       <option key={`single-approved-${person}`} value={person}>
                         {person}
                       </option>
@@ -1843,6 +2044,247 @@ const isInProduction = productStatus === "In Production";
           </div>
         </div>
       </div>
+
+      {/* 🚀 ENHANCED PERSON MANAGER */}
+      {showPersonManager && (
+        <div className="fixed inset-0 bg-[#000000cc] z-[999] flex items-center justify-center p-[clamp(12px,2vw,24px)]">
+          <div
+            className="
+        bg-white shadow-2xl overflow-y-auto
+        w-[90vw] max-w-[clamp(420px,38vw,560px)]
+        max-h-[85vh]
+        rounded-[clamp(14px,1.2vw,22px)]
+      "
+          >
+            {/* HEADER */}
+            <div
+              className="
+          bg-gradient-to-r from-purple-600 to-pink-600 text-white
+          p-[clamp(16px,1.5vw,24px)]
+          rounded-t-[clamp(14px,1.2vw,22px)]
+        "
+            >
+              <h3
+                className="
+            flex items-center gap-[clamp(8px,0.8vw,12px)]
+            font-black
+            text-[clamp(18px,1.6vw,24px)]
+          "
+              >
+                Manage Persons
+              </h3>
+            </div>
+
+            <div className="p-[clamp(16px,1.5vw,24px)] space-y-[clamp(16px,1.5vw,24px)]">
+              {/* CATEGORY TABS */}
+              <div className="grid grid-cols-3 gap-[clamp(6px,0.6vw,10px)] text-center">
+                {[
+                  {
+                    key: "received",
+                    label: "Received By",
+                    active: "bg-green-500",
+                  },
+                  {
+                    key: "packing",
+                    label: "Packing",
+                    active: "bg-orange-500",
+                  },
+                  {
+                    key: "approved",
+                    label: "Approved",
+                    active: "bg-red-500",
+                  },
+                ].map(({ key, label, active }) => (
+                  <button
+                    key={key}
+                    onClick={() => setPersonType(key)}
+                    className={`
+                px-[clamp(12px,1vw,18px)]
+                py-[clamp(8px,0.8vw,14px)]
+                rounded-[clamp(10px,1vw,16px)]
+                font-semibold transition-all
+                text-[clamp(13px,0.9vw,16px)]
+                ${
+                  personType === key
+                    ? `${active} text-white shadow-lg`
+                    : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                }
+              `}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* CURRENT LIST */}
+              <div className="space-y-[clamp(8px,0.8vw,12px)]">
+                <label className="block font-bold text-gray-800 capitalize text-[clamp(14px,1vw,18px)]">
+                  Current {personType.replace("_", " ")} Persons:
+                </label>
+
+                <div
+                  className="
+              max-h-[20vh] overflow-y-auto bg-gray-50
+              p-[clamp(10px,0.9vw,16px)]
+              rounded-[clamp(10px,1vw,16px)]
+              border border-gray-200
+            "
+                >
+                  {(personType === "received"
+                    ? receivedByOptions
+                    : personType === "packing"
+                      ? packingInchargeOptions
+                      : approvedByOptions
+                  ).map((person, idx) => (
+                    <div
+                      key={idx}
+                      className="
+                  flex items-center justify-between bg-white shadow-sm
+                  p-[clamp(10px,0.8vw,14px)]
+                  rounded-[clamp(10px,0.8vw,14px)]
+                  mb-[clamp(6px,0.6vw,10px)]
+                "
+                    >
+                      <span className="font-medium text-[clamp(14px,0.9vw,16px)]">
+                        {person}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const list =
+                            personType === "received"
+                              ? receivedByOptions
+                              : personType === "packing"
+                                ? packingInchargeOptions
+                                : approvedByOptions;
+
+                          const updated = list.filter((_, i) => i !== idx);
+
+                          if (personType === "received") {
+                            setReceivedByOptions(updated);
+                            localStorage.setItem(
+                              "iml_received_persons",
+                              JSON.stringify(updated),
+                            );
+                          } else if (personType === "packing") {
+                            setPackingInchargeOptions(updated);
+                            localStorage.setItem(
+                              "iml_packing_persons",
+                              JSON.stringify(updated),
+                            );
+                          } else {
+                            setApprovedByOptions(updated);
+                            localStorage.setItem(
+                              "iml_approved_persons",
+                              JSON.stringify(updated),
+                            );
+                          }
+                        }}
+                        className="text-red-500 hover:text-red-700 font-bold text-[clamp(16px,1.2vw,20px)]"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ADD NEW */}
+              <div>
+                <label className="block font-bold text-gray-800 mb-[clamp(8px,0.8vw,12px)] text-[clamp(14px,1vw,18px)]">
+                  Add New Person
+                </label>
+                <input
+                  type="text"
+                  value={newPerson}
+                  onChange={(e) => setNewPerson(e.target.value)}
+                  placeholder={`Enter ${personType.replace("_", " ")} name...`}
+                  className="
+              w-full border border-gray-300
+              px-[clamp(12px,1vw,18px)]
+              py-[clamp(10px,0.9vw,16px)]
+              rounded-[clamp(10px,1vw,16px)]
+              font-semibold
+              text-[clamp(14px,0.9vw,16px)]
+              focus:ring-2 focus:ring-purple-200 focus:border-purple-500
+              transition-all
+            "
+                />
+              </div>
+
+              {/* ACTIONS */}
+              <div className="flex gap-[clamp(10px,1vw,16px)] pt-[clamp(12px,1vw,20px)]">
+                <button
+                  onClick={() => {
+                    if (!newPerson.trim()) return;
+
+                    const list =
+                      personType === "received"
+                        ? receivedByOptions
+                        : personType === "packing"
+                          ? packingInchargeOptions
+                          : approvedByOptions;
+
+                    const updated = [...list, newPerson.trim()];
+
+                    if (personType === "received") {
+                      setReceivedByOptions(updated);
+                      localStorage.setItem(
+                        "iml_received_persons",
+                        JSON.stringify(updated),
+                      );
+                    } else if (personType === "packing") {
+                      setPackingInchargeOptions(updated);
+                      localStorage.setItem(
+                        "iml_packing_persons",
+                        JSON.stringify(updated),
+                      );
+                    } else {
+                      setApprovedByOptions(updated);
+                      localStorage.setItem(
+                        "iml_approved_persons",
+                        JSON.stringify(updated),
+                      );
+                    }
+
+                    setNewPerson("");
+                  }}
+                  className="
+              flex-1 font-bold text-white shadow-md transition-all
+              bg-purple-600 hover:bg-purple-700
+              px-[clamp(14px,1.1vw,20px)]
+              py-[clamp(8px,0.7vw,12px)]
+              rounded-[clamp(10px,0.9vw,16px)]
+              text-[clamp(13px,0.9vw,16px)]
+              hover:shadow-lg
+              cursor-pointer
+            "
+                >
+                  Add Person
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowPersonManager(false);
+                    setNewPerson("");
+                  }}
+                  className="
+              bg-gray-500 hover:bg-gray-600
+              text-white font-bold transition-all
+              px-[clamp(14px,1.1vw,20px)]
+              py-[clamp(8px,0.7vw,12px)]
+              rounded-[clamp(10px,0.9vw,16px)]
+              text-[clamp(13px,0.9vw,16px)]
+              cursor-pointer
+            "
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

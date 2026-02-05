@@ -475,6 +475,9 @@ const ProductionManagement = () => {
     }
   }, [productionData]);
 
+  // ✅ AUTO UPDATE ORDER STATUS WHEN REMAINING = 0
+
+
   // Get production status
   const getProductionStatus = (itemId) => {
     const item = productionData.find((item) => item.id === itemId);
