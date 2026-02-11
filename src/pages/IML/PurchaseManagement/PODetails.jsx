@@ -127,6 +127,9 @@ const PODetails = () => {
   useEffect(() => {
   if (!order) return;
 
+    const isFirstRun = !hasPromptedRef.current;
+    hasPromptedRef.current = true;     
+
   try {
     const storedPO = localStorage.getItem(STORAGE_KEY_PO);
     if (!storedPO) return;
@@ -143,13 +146,10 @@ const PODetails = () => {
     }
 
     // ---- 2️⃣ Prompt only once, only from OrdersManagement ----
-    if (
-      !fromOrdersManagement ||
-      !existingPO?.products ||
-      hasPromptedRef.current
-    ) {
+     if (!isFirstRun || !fromOrdersManagement || !existingPO?.products) {
       return;
     }
+    
 
     const sourceProducts = [];
     let sourcePO = null;
