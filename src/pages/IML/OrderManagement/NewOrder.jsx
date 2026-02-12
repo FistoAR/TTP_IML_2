@@ -76,45 +76,7 @@ const PaymentModal = ({
               Record Payment
             </h3>
 
-            {/* Payment Type Selection */}
-            {/* <div className="flex gap-[1.2vw] mb-[1.25vw]">
-              <label className="flex items-center gap-[.75vw] cursor-pointer">
-                <input
-                  type="radio"
-                  name="modalPaymentType"
-                  value="advance"
-                  checked={bulkPayment.paymentType === "advance"}
-                  onChange={(e) =>
-                    setBulkPayment({
-                      ...bulkPayment,
-                      paymentType: e.target.value,
-                    })
-                  }
-                  className="w-4 h-4 cursor-pointer"
-                />
-                <span className="text-[1vw] font-medium text-gray-700">
-                  Advance Received
-                </span>
-              </label>
-              <label className="flex items-center gap-[.75vw] cursor-pointer">
-                <input
-                  type="radio"
-                  name="modalPaymentType"
-                  value="po"
-                  checked={bulkPayment.paymentType === "po"}
-                  onChange={(e) =>
-                    setBulkPayment({
-                      ...bulkPayment,
-                      paymentType: e.target.value,
-                    })
-                  }
-                  className="w-4 h-4 cursor-pointer"
-                />
-                <span className="text-[1vw] font-medium text-gray-700">PO</span>
-              </label>
-            </div> */}
-
-            {/* Advance Payment Fields */}
+            
             {bulkPayment.paymentType === "advance" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-[2vw]">
@@ -162,7 +124,7 @@ const PaymentModal = ({
 
                 <div>
                   <label className="block text-[1vw] font-medium text-gray-700 mb-2">
-                    Payment Remarks
+                    Payment Remarks <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     placeholder="Enter payment notes or reference..."
@@ -180,7 +142,7 @@ const PaymentModal = ({
 
                 <div>
                   <label className="block text-[1vw] font-medium text-gray-700 mb-2">
-                    Upload Screenshot
+                    Upload Screenshot <span className="text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-2 items-center gap-[1vw]">
                     <FileUploadBox
@@ -211,7 +173,7 @@ const PaymentModal = ({
             {bulkPayment.paymentType === "po" && (
               <div>
                 <label className="block text-[1vw] font-medium text-gray-700 mb-2">
-                  PO Details / Reference
+                  PO Details / Reference <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   placeholder="Enter PO number, date, or other details..."
@@ -228,7 +190,7 @@ const PaymentModal = ({
 
                 <div className="mt-4">
                   <label className="block text-[1vw] font-medium text-gray-700 mb-2">
-                    Upload PO Document
+                    Upload PO Document <span className="text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-2 items-center gap-[1vw]">
                     <FileUploadBox
@@ -332,7 +294,7 @@ const PaymentModal = ({
           <button
             onClick={() => {
               addPaymentRecord();
-              setShowPaymentModal(false);
+              // setShowPaymentModal(false);
             }}
             className="px-[.95vw] py-[.5vw] text-[1vw] cursor-pointer bg-green-600 text-white rounded font-semibold hover:bg-green-700 transition-all shadow-md"
           >
@@ -389,6 +351,13 @@ export default function NewOrder({
 
   const [isFormValid, setIsFormValid] = useState(false);
   const [selectedPaymentType, setSelectedPaymentType] = useState('advance'); // Default
+
+  const [highlightedErrors, setHighlightedErrors] = useState({});
+  const [toastMessage, setToastMessage] = useState('');
+  const [showToast, setShowToast] = useState(false);
+const [currentErrorStep, setCurrentErrorStep] = useState(0);
+const [errorGroups, setErrorGroups] = useState([]);
+
 
   // Product size options mapping
   const PRODUCT_SIZE_OPTIONS = {
@@ -702,6 +671,11 @@ const getAutoImlType = (productName, size) => {
   setProducts((prevProducts) => {
     const newProducts = prevProducts.filter(p => p.id !== targetId);
     console.log(`Removed product ${targetId}, ${newProducts.length} left`); // Debug
+
+    setErrorGroups([]);
+    setCurrentErrorStep(0);
+
+
     return newProducts;
   });
 }, []);
@@ -1115,26 +1089,41 @@ const getAutoImlType = (productName, size) => {
 
   const addPaymentRecord = () => {
     if (!bulkPayment.paymentType) {
-      alert("Please select payment type (Advance or PO)");
+      generalToast("Please select payment type (Advance or PO)");
       return;
     }
 
     if (bulkPayment.paymentType === "advance") {
-      if (!bulkPayment.method || !bulkPayment.amount) {
-        alert("Please fill in payment method and amount for Advance payment");
+      if (!bulkPayment.method) {
+        generalToast("Please fill in payment method for Advance payment");
+        return;
+      } 
+      if (!bulkPayment.amount) {
+        generalToast("Please fill in amount for Advance payment");
+        return;
+      }
+      if (!bulkPayment.remarks) {
+        generalToast("Please enter remarks for Advance payment");
+        return;
+      }
+      
+      if (!bulkPayment.file) {
+        generalToast("Please upload a valid screenshot for Advance payment");
         return;
       }
     }
 
-    // const newRecord = {
-    //   id: Date.now(),
-
-    //   paymentType: bulkPayment.paymentType,
-    //   method: bulkPayment.method,
-    //   amount: bulkPayment.amount,
-    //   remarks: bulkPayment.remarks,
-    //   timestamp: new Date().toISOString(),
-    // };
+    if (bulkPayment.paymentType === "po") {
+      if (!bulkPayment.remarks) {
+        generalToast("Please enter PO Details / Reference");
+        return;
+      }
+      
+      if (!bulkPayment.file) {
+        generalToast("Please upload a valid PO documennt for Advance payment");
+        return;
+      }
+    }
 
     const newRecord = {
       ...bulkPayment,
@@ -1156,6 +1145,7 @@ const getAutoImlType = (productName, size) => {
     });
 
     alert("Payment record added successfully!");
+    setShowPaymentModal(false);
   };
 
   const removePaymentRecord = (recordId) => {
@@ -1224,48 +1214,185 @@ const hasPaymentRecord2 = () => {
 };
 
 
-  const validateForm = useCallback(() => {
-  const allProductsValid = products.every(product => {
-    // 1. IML Name required
-    const hasImlName = product.imlName && product.imlName.trim();
+ const validateForm = useCallback(() => {
+  const groups = [];
+  
+  // Group 1: Contact (priority 0)
+  const contactErrors = [];
+  if (!contact.company?.trim()) contactErrors.push('Company Name');
+  if (!contact.contactName?.trim()) contactErrors.push('Contact Name');
+  if (!contact.phone?.trim()) contactErrors.push('Contact Number');
+  if (!contact.priority) contactErrors.push('Priority');
+  if (contactErrors.length > 0) {
+    groups.push({ step: 0, message: `Required - Contact Details: ${contactErrors.join(', ')}` });
+  }
+  
+  // Group 2: Order Estimate (priority 1)
+  const estimateErrors = [];
+  if (!orderEstimate.estimatedNumber) estimateErrors.push('Estimated Number');
+  if (!orderEstimate.estimatedValue || parseFloat(orderEstimate.estimatedValue) === 0) estimateErrors.push('Estimated Value');
+  if (estimateErrors.length > 0) {
+    groups.push({ step: 1, message: `Order Estimate: ${estimateErrors.join(', ')} required` });
+  }
+  
+  // Group 3: Products (priority 2)
+  const invalidProducts = products.filter((product, idx) => {
+    const hasImlName = product.imlName?.trim();
+    let hasDesign = true;
+    if (product.designStatus === 'approved') {
+      hasDesign = product.imlType === 'LID & TUB' ? !!product.lidDesignFile : (product.lidDesignFile || product.tubDesignFile);
+    }
+
+    let hasValidQty = false;
+    if (product.imlType === 'LID & TUB') {
+      hasValidQty = (product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0) ||
+                    (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
+    } else if (product.imlType === 'LID') {
+      hasValidQty = product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
+    } else if (product.imlType === 'TUB') {
+      hasValidQty = product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
+    }
     
-    // 2. Design file required when Approved
-    const hasDesignFile = (() => {
-      if (product.designStatus !== "approved") return true; // Not approved = valid
-      
-      if (product.imlType === "LID & TUB") {
-        // LID & TUB: LID file MANDATORY
-        return !!product.lidDesignFile; 
-      } else {
-        // LID or TUB: ANY file (lid OR tub) is enough
-        return product.lidDesignFile || product.tubDesignFile;
+  // Optional: Production Qty validation (require if LabelQty exists)
+    let hasValidProduction = true;
+    if (product.imlType === 'LID & TUB') {
+      hasValidProduction = (!product.lidLabelQty || product.lidProductionQty?.trim()) &&
+                          (!product.tubLabelQty || product.tubProductionQty?.trim());
+    } else if (product.imlType === 'LID') {
+      hasValidProduction = !product.lidLabelQty || product.lidProductionQty?.trim();
+    } else if (product.imlType === 'TUB') {
+      hasValidProduction = !product.tubLabelQty || product.tubProductionQty?.trim();
+    }
+  
+    return !product.productName || !product.size || !hasImlName || !hasDesign || !hasValidQty || !hasValidProduction;
+    // return !product.productName || !product.size || !hasImlName || !hasDesign;
+  });
+
+  if (invalidProducts.length > 0) {
+  // Build specific missing fields for each invalid product
+  const productErrors = invalidProducts.map(product => {
+    const missingFields = [];
+    
+    // Product Name
+    if (!product.productName) missingFields.push('Product Name');
+    
+    // Size  
+    if (!product.size) missingFields.push('Size');
+    
+    // IML Name
+    if (!product.imlName?.trim()) missingFields.push('IML Name');
+    
+    // Design (only if approved)
+    if (product.designStatus === 'approved') {
+      const hasDesign = product.imlType === 'LID & TUB' ? !!product.lidDesignFile : (product.lidDesignFile || product.tubDesignFile);
+      if (!hasDesign) missingFields.push('Design');
+    }
+    
+    // Label Order Qty (mandatory for all types)
+    let hasValidLabelQty = false;
+    if (product.imlType === 'LID & TUB') {
+      hasValidLabelQty = (product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0) ||
+                        (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
+    } else if (product.imlType === 'LID') {
+      hasValidLabelQty = product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
+    } else if (product.imlType === 'TUB') {
+      hasValidLabelQty = product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
+    }
+    if (!hasValidLabelQty) missingFields.push('Label Order Qty');
+    
+    // Production Qty (only if corresponding Label Qty exists)
+    if (product.imlType === 'LID & TUB') {
+      if ((product.lidLabelQty?.trim() && !product.lidProductionQty?.trim()) ||
+          (product.tubLabelQty?.trim() && !product.tubProductionQty?.trim())) {
+        missingFields.push('Production Qty');
       }
-    })();
+    } else if (product.imlType === 'LID') {
+      if (product.lidLabelQty?.trim() && !product.lidProductionQty?.trim()) {
+        missingFields.push('Production Qty');
+      }
+    } else if (product.imlType === 'TUB') {
+      if (product.tubLabelQty?.trim() && !product.tubProductionQty?.trim()) {
+        missingFields.push('Production Qty');
+      }
+    }
     
-    // 3. Basic product fields
-    const hasProductName = product.productName;
-    const hasSize = product.size;
-    
-    return hasImlName && hasDesignFile && hasProductName && hasSize;
+    return {
+      productIndex: products.indexOf(product) + 1,
+      fields: missingFields
+    };
   });
   
-  // 4. Contact details
-  const contactValid = contact.company && contact.contactName && contact.phone;
+  // Group by product and create message
+  const errorMessages = productErrors.map(err => 
+    `Required - Product #${err.productIndex}: ${err.fields.join(', ')}`
+  );
   
-  // 5. Order estimate
-  const estimateValid = orderEstimate.estimatedNumber && orderEstimate.estimatedValue > 0;
+  groups.push({ 
+    step: 2, 
+    message: errorMessages.join('; ') 
+  });
+}
 
-  // NEW: Payment validation logic
-  const paymentValid = !hasAnyApprovedProduct() || hasPaymentRecord2();
   
+  // Group 4: Payment (priority 3)
+  const hasAnyApproved = products.some(p => p.designStatus === 'approved');
+  if (hasAnyApproved && paymentRecords.length === 0) {
+    groups.push({ step: 3, message: 'Payment: Record required for approved designs' });
+  }
   
-  const isValid = allProductsValid && contactValid && estimateValid && paymentValid;
-  console.log(`All products: ${allProductsValid}`);
-  console.log(`All contact: ${contactValid}`);
-  console.log(`All estimate valid: ${estimateValid}`);
+  const isValid = groups.length === 0;
+  setErrorGroups(groups);
   setIsFormValid(isValid);
+  
+  if (!isValid) {
+    setCurrentErrorStep(0); // Reset to first group
+  }
   return isValid;
 }, [products, contact, orderEstimate, paymentRecords]);
+
+
+const handleValidateClick = () => {
+  const isValid = validateForm();
+  
+  if (isValid) {
+    submitForm();
+    return;
+  }
+  
+  // Show only current step's error
+  const freshErrorGroups = errorGroups; // Now updated by validateForm()
+  const currentError = freshErrorGroups[currentErrorStep];
+
+  if (!currentError) return;
+  
+  setToastMessage(currentError.message);
+  setShowToast(true);
+  setTimeout(() => setShowToast(false), 5000);
+  
+  // Scroll to relevant section
+  const scrolls = {
+    0: '[data-section="contact"]',      // Add data-section="contact" to contact div
+    1: '[data-section="estimate"]',     // Add to estimates div
+    2: '.products-list',                // Existing products container
+    3: '.payment-records'               // Payment table/section
+  };
+  const target = document.querySelector(scrolls[currentError.step]);
+  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+useEffect(() => {
+  setErrorGroups([]);
+  setCurrentErrorStep(0);
+  setHighlightedErrors([]);
+  setIsFormValid(false);
+}, [products]); 
+
+function generalToast(message) {
+  setToastMessage(message);
+  setShowToast(true);
+  setTimeout(() => setShowToast(false), 5000);
+}
+
 
 useEffect(() => {
   validateForm();
@@ -2830,23 +2957,25 @@ useEffect(() => {
                 />
                 <span className="text-[0.95vw] font-medium text-gray-700">PO</span>
               </label>
-            <button
-              onClick={() => {
-                setBulkPayment({
-                  paymentType: selectedPaymentType,  // ✅ Sync with radio selection
-                  method: "",
-                  amount: "",
-                  remarks: "",
-                  file: null,
-                });
-                setShowPaymentModal(true)
-              }}
-              className="px-[.8vw] py-[.65vw] bg-green-600 text-white text-[.9vw] rounded-lg font-semibold hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 absolute top-[50%] right-[0%] translate-y-[-50%] cursor-pointer"
-            >
-              <span className="text-[1vw]">+</span>
-              Add {selectedPaymentType === 'advance' ? 'Advance' : 'PO'} Payment
-            </button>
+              <button
+                onClick={() => {
+                  setBulkPayment({
+                    paymentType: selectedPaymentType,  // ✅ Sync with radio selection
+                    method: "",
+                    amount: "",
+                    remarks: "",
+                    file: null,
+                  });
+                  setShowPaymentModal(true)
+                }}
+                className="px-[.8vw] py-[.65vw] bg-green-600 text-white text-[.9vw] rounded-lg font-semibold hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 absolute top-[50%] right-[0%] translate-y-[-50%] cursor-pointer"
+              >
+                <span className="text-[1vw]">+</span>
+                Add {selectedPaymentType === 'advance' ? 'Advance' : 'PO'} Payment
+              </button>
             </div>
+
+            <p className="mt-[-1vw] mb-[.75vw] text-[0.85vw] text-gray-700">Note: Atleast one payment record needs to be added if for any product - the artwork is approved</p>
 
  {/* Compact Summary Bar */}
 
@@ -3061,8 +3190,8 @@ useEffect(() => {
             Cancel
           </button>
           <button
-            onClick={submitForm}
-            disabled={!isFormValid}
+            onClick={handleValidateClick}
+            // disabled={!isFormValid}
             className="px-[1.5vw] py-[0.65vw] bg-green-600 text-white border-none rounded-[0.5vw] text-[0.85vw] font-semibold cursor-pointer transition-all duration-200 hover:bg-green-700 shadow-md"
           >
             {isFormValid ? 'Submit Order' : 'Complete All Fields First'}
@@ -3079,6 +3208,41 @@ useEffect(() => {
         addPaymentRecord={addPaymentRecord}
         calculateTotals={calculateTotals}
       />
+      {showToast && (
+  <div className="fixed top-4 right-4 z-50 bg-white border-red-500 border-[0.2vw] text-white p-4 rounded-lg shadow-xl animate-in slide-in-from-right-2 fade-in duration-300 max-w-md">
+   <div className="flex items-start gap-3">
+      
+      {/* Icon */}
+      <div className="flex-shrink-0 text-red-500">
+        <svg
+          className="w-[1.25vw] h-[1.25vw]"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+          />
+        </svg>
+      </div>
+
+      {/* Message */}
+      <p className="text-[.8vw] font-medium flex-1 text-black mt-[-.15vw]">
+        {toastMessage}
+      </p>
+    </div>
+
+    {/* Close Button */}
+    <button
+      onClick={() => setShowToast(false)}
+      className="absolute bottom-[8%] right-[4%] text-gray-400 hover:text-gray-700 text-[.85vw] font-semibold cursor-pointer"
+    >
+      Close
+    </button>
+  </div>
+)}
+
     </div>
   );
 }
@@ -3467,7 +3631,7 @@ function Input({
   return (
     <div>
       <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
-        {label} {required}
+        {label} {required && <><span className="text-red-500">*</span></>}
       </label>
       <input
         type={type}
@@ -3495,7 +3659,7 @@ function Select({
   return (
     <div>
       <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
-        {label} {required}
+        {label} {required && <><span className="text-red-500">*</span></>}
       </label>
       <div className="relative">
         <select

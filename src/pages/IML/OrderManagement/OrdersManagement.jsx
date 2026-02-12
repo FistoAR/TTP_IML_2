@@ -1,24 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import NewOrder from "./NewOrder";
+import FileUploadBox from "./modals/FileUploadBox";
 
 // Mock data storage (In production, this would be an API/Database)
-const DATA_VERSION = "2.0"; // Increment this when structure changes
+const DATA_VERSION = "3.0"; // Increment this when structure changes
 const STORAGE_KEY = "imlorders";
 const VERSION_KEY = "imlorders_version";
 
 const STORAGE_KEY_PRODUCTION_ALLOCATION = "iml_production_allocation";
-const STORAGE_KEY_REMAINING_HISTORY = "iml_remaining_history";
-const STORAGE_KEY_CR_NOTIFICATIONS = "iml_change_requests";
-
-// Product size options for initial expansion
-const PRODUCT_SIZE_OPTIONS = {
-  Round: ["120ml", "250ml", "300ml", "500ml", "1000ml"],
-  "Round Square": ["450ml", "500ml"],
-  Rectangle: ["500ml", "650ml", "750ml"],
-  "Sweet Box": ["250gms", "500gms"],
-  "Sweet Box TE": ["TE 250gms", "TE 500gms"],
-};
 
 export default function OrdersManagement2() {
   const [view, setView] = useState("dashboard"); // 'dashboard' or 'form'
@@ -60,12 +50,6 @@ export default function OrdersManagement2() {
     history: [],
   });
 
-  // PO popup
-  const [showEditModal, setShowEditModal] = useState(false);
-
-  const [showRevisionModal, setShowRevisionModal] = useState(false);
-  const [revisedEstimatedNo, setRevisedEstimatedNo] = useState("");
-  const [revisedEstimatedValue, setRevisedEstimatedValue] = useState("");
   const [changeRequestModal, setChangeRequestModal] = useState({
     isOpen: false,
     order: null,
@@ -83,39 +67,12 @@ export default function OrdersManagement2() {
     revision: null,
   });
 
-  const [contact, setContact] = useState({
-    company: "",
-    contactName: "",
-    phone: "",
-    priority: "medium",
-  });
-
-  const [orderNumberState, setOrderNumberState] = useState("");
-
-  const [orderEstimateRevised, setOrderEstimateRevised] = useState({
-    estimatedNumber: "",
-    estimatedValue: "",
-  });
-
-  // Autocomplete states for ChangeRequestModal
-  const [filteredImlNames, setFilteredImlNames] = useState([]);
-  const [showImlNameSuggestions, setShowImlNameSuggestions] = useState({});
-  const [filteredLidColors, setFilteredLidColors] = useState([]);
-  const [showLidColorSuggestions, setShowLidColorSuggestions] = useState({});
-  const [filteredTubColors, setFilteredTubColors] = useState([]);
-  const [showTubColorSuggestions, setShowTubColorSuggestions] = useState({});
-  const imlNameRefs = useRef({});
-  const lidColorRefs = useRef({});
-  const tubColorRefs = useRef({});
-
   const PRIORITY_OPTIONS = [
     { value: "low", label: "Low (5-6 weeks)" },
     { value: "medium", label: "Medium (4-5 weeks)" },
     { value: "high", label: "High (<4 weeks)" },
   ];
-  const [filteredCompanies, setFilteredCompanies] = useState([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const autocompleteRef = useRef(null);
+
   const [invoiceModal, setInvoiceModal] = useState({
     isOpen: false,
     orderId: null,
@@ -138,19 +95,19 @@ export default function OrdersManagement2() {
     orderId: null,
     order: null,
   });
+
   const [orderInvoiceModal, setOrderInvoiceModal] = useState({
     isOpen: false,
     order: null,
   });
 
   // Add with your other modal states
-const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({ 
-  isOpen: false, 
-  orderId: null,
-  orderNumber: null,
-  invoices: []
-});
-
+  const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
+    isOpen: false,
+    orderId: null,
+    orderNumber: null,
+    invoices: [],
+  });
 
   const IMLNAME_OPTIONS = [
     "Premium IML Labels",
@@ -436,7 +393,7 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
             productName: "Round",
             size: "1000ml",
             imlName: "Premium Plus IML", // MOVED HERE
-            imlType: "LID TUB",
+            imlType: "LID & TUB",
             lidColor: "orange",
             tubColor: "white",
             lidLabelQty: "1200",
@@ -563,7 +520,7 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
             productName: "Round Square",
             size: "450ml",
             imlName: "Premium IML Labels", // Same IML name as another order
-            imlType: "LID TUB",
+            imlType: "LID & TUB",
             lidColor: "black",
             tubColor: "golden",
             lidLabelQty: "2000",
@@ -799,36 +756,6 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
     });
   };
 
-  // change request modal new handlers
-  const handleCompanyInput = (value) => {
-    setContact({ ...contact, company: value });
-    if (!value.trim()) {
-      setContact({
-        company: "",
-        contactName: "",
-        phone: "",
-        priority: contact.priority,
-      });
-      setShowSuggestions(false);
-      return;
-    }
-    const filtered = DUMMY_COMPANIES.filter((company) =>
-      company.company.toLowerCase().includes(value.toLowerCase()),
-    );
-    setFilteredCompanies(filtered);
-    setShowSuggestions(filtered.length > 0);
-  };
-
-  const handleSuggestionClick = (company) => {
-    setContact({
-      company: company.company,
-      contactName: company.contactName,
-      phone: company.phone,
-      priority: contact.priority,
-    });
-    setShowSuggestions(false);
-  };
-
   // Modal handlers
   const handleCloseChangeRequest = () => {
     console.log(`Change request close triggered`);
@@ -975,93 +902,6 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
     });
   };
 
-  const handleDeleteProduct = ({ orderId, productId }) => {
-    if (!window.confirm("Are you sure you want to delete this product?"))
-      return;
-
-    const storedOrders =
-      JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS)) || [];
-
-    const updatedOrders = storedOrders.map((o) => {
-      if (o.id !== orderId) return o;
-      return {
-        ...o,
-        products: o.products.filter((p) => p.id !== productId),
-      };
-    });
-
-    localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new Event("ordersUpdated"));
-
-    setShowEditModal(false);
-    alert("Product deleted successfully");
-  };
-
-  const handleSubmitChangeRequest = () => {
-    if (!revisedEstimatedNo || !revisedEstimatedValue) {
-      alert("Please enter revised values");
-      return;
-    }
-
-    const storedNotifications =
-      JSON.parse(localStorage.getItem(STORAGE_KEY_CR_NOTIFICATIONS)) || [];
-
-    const notification = {
-      id: `cr_${Date.now()}`,
-      orderId: selectedProduct.orderId,
-      productId: selectedProduct.productId,
-      productName: selectedProduct.product.productName,
-
-      oldValues: {
-        estimatedNo: selectedProduct.product.estimatedNo,
-        estimatedValue: selectedProduct.product.estimatedValue,
-        productSnapshot: selectedProduct.product,
-      },
-
-      requestedValues: {
-        estimatedNo: revisedEstimatedNo,
-        estimatedValue: revisedEstimatedValue,
-        updatedProductFields: selectedProduct.product,
-      },
-
-      status: "Pending",
-      requestedAt: new Date().toISOString(),
-    };
-
-    storedNotifications.push(notification);
-    localStorage.setItem(
-      STORAGE_KEY_CR_NOTIFICATIONS,
-      JSON.stringify(storedNotifications),
-    );
-
-    // ---- Update product status ONLY ----
-    const storedOrders =
-      JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS)) || [];
-
-    const updatedOrders = storedOrders.map((o) => {
-      if (o.id !== selectedProduct.orderId) return o;
-
-      return {
-        ...o,
-        products: o.products.map((p) =>
-          p.id === selectedProduct.productId
-            ? { ...p, orderStatus: "CR Approval Pending" }
-            : p,
-        ),
-      };
-    });
-
-    localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new Event("ordersUpdated"));
-
-    setShowRevisionModal(false);
-    setSelectedProduct(null);
-    setRevisedEstimatedNo("");
-    setRevisedEstimatedValue("");
-
-    alert("Change Request submitted for approval");
-  };
-
   // handle move to production
   const handleMoveToProduction = (order, product) => {
     const remaining = calculateRemainingLabels(product);
@@ -1107,13 +947,13 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
   const calculateRemainingLabels = (product) => {
     let remaining = 0;
 
-    if (product.imlType === "LID" || product.imlType === "LID TUB") {
+    if (product.imlType === "LID" || product.imlType === "LID & TUB") {
       const lidOrdered = parseInt(product.lidLabelQty) || 0;
       const lidProduced = parseInt(product.lidProductionQty) || 0;
       remaining += lidOrdered - lidProduced;
     }
 
-    if (product.imlType === "TUB" || product.imlType === "LID TUB") {
+    if (product.imlType === "TUB" || product.imlType === "LID & TUB") {
       const tubOrdered = parseInt(product.tubLabelQty) || 0;
       const tubProduced = parseInt(product.tubProductionQty) || 0;
       remaining += tubOrdered - tubProduced;
@@ -1582,7 +1422,6 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
   const ViewRequestModal = () => {
     // ✅ ADD LOCAL STATE for immediate updates
     const [localOrders, setLocalOrders] = useState(orders);
-    const [localProduct, setLocalProduct] = useState(null);
 
     useEffect(() => {
       // Sync with parent orders
@@ -2383,7 +2222,9 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
           <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-8 rounded-t-2xl">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-[1.5vw] font-black tracking-tight">INVOICES</h2>
+                <h2 className="text-[1.5vw] font-black tracking-tight">
+                  INVOICES
+                </h2>
                 <p className="opacity-90 text-[1vw]">
                   Generated from Product Deletions
                 </p>
@@ -2728,305 +2569,381 @@ const [deletedOrderInvoicesModal, setDeletedOrderInvoicesModal] = useState({
   };
 
   const OrderDeleteInvoiceModal = () => {
-  // ✅ ADD LOCAL STATE FOR FORM
-  const [bulkInvoicePrefix, setBulkInvoicePrefix] = useState('INV-ORD-');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  // ✅ Track custom amounts per product
-  const [productAmounts, setProductAmounts] = useState({});
+    // ✅ ADD LOCAL STATE FOR FORM
+    const [bulkInvoicePrefix, setBulkInvoicePrefix] = useState("INV-ORD-");
+    const [invoiceDate, setInvoiceDate] = useState(
+      new Date().toISOString().split("T")[0],
+    );
 
-  const updateProductAmount = (productId, amount) => {
-    setProductAmounts(prev => ({
-      ...prev,
-      [productId]: parseFloat(amount) || 0
-    }));
-  };
+    // ✅ Track custom amounts per product
+    const [productAmounts, setProductAmounts] = useState({});
 
-  const handleConfirmDelete = () => {
-    const order = orderInvoiceModal.order;
-    
-    // ✅ USE CUSTOM AMOUNTS OR FALLBACK TO BUDGET
-    const invoices = order.products.map((product, index) => ({
-      id: `INV-ORD-${order.id}-${Date.now()}-${index}`,
-      productId: product.id,
-      productName: product.productName,
-      size: product.size,
-      invoiceNo: `${bulkInvoicePrefix}${order.orderNumber}-${String(index + 1).padStart(3, '0')}`,
-      invoiceDate: invoiceDate,
-      amount: productAmounts[product.id] || product.budget || 0,
-      reason: "Order Deleted",
-      remarks: `Bulk deletion of Order ${order.orderNumber}`,
-      status: "Generated"
-    }));
+    const updateProductAmount = (productId, amount) => {
+      setProductAmounts((prev) => ({
+        ...prev,
+        [productId]: parseFloat(amount) || 0,
+      }));
+    };
 
-    // ✅ ADD INVOICES TO LAST REMAINING ORDER (or create dummy order for invoices)
-    const updatedOrders = orders
-      .filter(o => o.id !== order.id)
-      .map(o => ({
-        ...o,
-        invoices: [
-          ...(o.invoices || []),
-          ...invoices
-        ]
+    const handleConfirmDelete = () => {
+      const order = orderInvoiceModal.order;
+
+      // ✅ USE CUSTOM AMOUNTS OR FALLBACK TO BUDGET
+      const invoices = order.products.map((product, index) => ({
+        id: `INV-ORD-${order.id}-${Date.now()}-${index}`,
+        productId: product.id,
+        productName: product.productName,
+        size: product.size,
+        invoiceNo: `${bulkInvoicePrefix}${order.orderNumber}-${String(index + 1).padStart(3, "0")}`,
+        invoiceDate: invoiceDate,
+        amount: productAmounts[product.id] || product.budget || 0,
+        reason: "Order Deleted",
+        remarks: `Bulk deletion of Order ${order.orderNumber}`,
+        status: "Generated",
       }));
 
-    setOrders(updatedOrders);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new Event("ordersUpdated"));
+      // ✅ ADD INVOICES TO LAST REMAINING ORDER (or create dummy order for invoices)
+      const updatedOrders = orders
+        .filter((o) => o.id !== order.id)
+        .map((o) => ({
+          ...o,
+          invoices: [...(o.invoices || []), ...invoices],
+        }));
 
-    setOrderInvoiceModal({ isOpen: false, order: null });
-    alert("Order Deleted!!");
+      setOrders(updatedOrders);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+      window.dispatchEvent(new Event("ordersUpdated"));
+
+      setOrderInvoiceModal({ isOpen: false, order: null });
+      alert("Order Deleted!!");
+    };
+
+    if (!orderInvoiceModal.isOpen || !orderInvoiceModal.order) return null;
+
+    return (
+      <div className="fixed inset-0 bg-[#000000b3] z-[50008] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+          {/* HEADER */}
+          <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-8 rounded-t-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-black">Bulk Invoice Creation</h2>
+                <p className="opacity-90">
+                  Order: <strong>{orderInvoiceModal.order?.orderNumber}</strong>{" "}
+                  -{orderInvoiceModal.order?.products?.length} products
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  setOrderInvoiceModal({ isOpen: false, order: null })
+                }
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-2xl w-14 h-14 flex items-center justify-center"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div className="p-8 space-y-6">
+            {/* ✅ FIXED BULK INVOICE FIELDS */}
+            <div className="grid grid-cols-2 gap-6 bg-gray-50 p-6 rounded-2xl">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                  Invoice No Prefix
+                </label>
+                <input
+                  type="text"
+                  value={bulkInvoicePrefix}
+                  onChange={(e) => setBulkInvoicePrefix(e.target.value)}
+                  placeholder="INV-ORD-"
+                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                  Invoice Date
+                </label>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+            </div>
+
+            {/* PRODUCTS TABLE */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-bold text-gray-800">
+                Products to Invoice
+              </h3>
+              {orderInvoiceModal.order?.products?.map((product) => (
+                <div
+                  key={product.id}
+                  className="bg-white border rounded-xl p-6 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h4 className="font-bold text-lg">
+                        {product.productName} {product.size}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {product.imlName} | {product.imlType} | LID:{" "}
+                        {product.lidColor} | TUB: {product.tubColor}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <input
+                        type="number"
+                        value={
+                          productAmounts[product.id] || product.budget || ""
+                        }
+                        onChange={(e) =>
+                          updateProductAmount(product.id, e.target.value)
+                        }
+                        placeholder="Amount"
+                        className="w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 text-right font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* TOTAL & BUTTONS */}
+            <div className="pt-6 border-t-4 border-gray-200 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gradient-to-r from-gray-50 to-blue-50 p-6 rounded-2xl">
+              <div>
+                <p className="text-2xl font-black text-gray-900">
+                  Total:{" "}
+                  <span className="text-emerald-600">
+                    ₹
+                    {orderInvoiceModal.order?.products
+                      ?.reduce((sum, p) => {
+                        return sum + (productAmounts[p.id] || p.budget || 0);
+                      }, 0)
+                      .toLocaleString()}
+                  </span>
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setDeleteOrderModal({
+                      isOpen: true,
+                      orderId: orderInvoiceModal.order.id,
+                      order: orderInvoiceModal.order,
+                    });
+                    setOrderInvoiceModal({ isOpen: false, order: null });
+                  }}
+                  className="px-8 py-3 bg-gray-300 text-gray-800 rounded-xl hover:bg-gray-400 font-bold"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="px-12 py-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-2xl hover:shadow-2xl font-black text-lg transition-all"
+                >
+                  ✅ Delete Order & Generate Invoices
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  if (!orderInvoiceModal.isOpen || !orderInvoiceModal.order) return null;
+  const OrderInvoiceModalView = () => {
+    // ✅ GROUP INVOICES BY ORDER
+    const groupedInvoices = deletedOrderInvoicesModal.invoices.reduce(
+      (acc, invoice) => {
+        const orderNum =
+          invoice.orderNumber ||
+          deletedOrderInvoicesModal.orderNumber ||
+          "Unknown Order";
+        if (!acc[orderNum]) {
+          acc[orderNum] = [];
+        }
+        acc[orderNum].push(invoice);
+        return acc;
+      },
+      {},
+    );
 
-  return (
-    <div className="fixed inset-0 bg-[#000000b3] z-[50008] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        
-        {/* HEADER */}
-        <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-8 rounded-t-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-black">Bulk Invoice Creation</h2>
-              <p className="opacity-90">
-                Order: <strong>{orderInvoiceModal.order?.orderNumber}</strong> - 
-                {orderInvoiceModal.order?.products?.length} products
-              </p>
-            </div>
-            <button
-              onClick={() => setOrderInvoiceModal({ isOpen: false, order: null })}
-              className="text-white hover:bg-white hover:bg-opacity-20 rounded-2xl w-14 h-14 flex items-center justify-center"
-            >
-              ×
-            </button>
-          </div>
-        </div>
+    const ordersList = Object.entries(groupedInvoices)
+      .map(([orderNumber, invoices]) => ({
+        orderNumber,
+        invoices,
+        total: invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.invoices[0].invoiceDate) -
+          new Date(a.invoices[0].invoiceDate),
+      );
 
-        <div className="p-8 space-y-6">
-          {/* ✅ FIXED BULK INVOICE FIELDS */}
-          <div className="grid grid-cols-2 gap-6 bg-gray-50 p-6 rounded-2xl">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3">Invoice No Prefix</label>
-              <input
-                type="text"
-                value={bulkInvoicePrefix}
-                onChange={(e) => setBulkInvoicePrefix(e.target.value)}
-                placeholder="INV-ORD-"
-                className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3">Invoice Date</label>
-              <input
-                type="date"
-                value={invoiceDate}
-                onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          </div>
-
-          {/* PRODUCTS TABLE */}
-          <div className="space-y-4">
-            <h3 className="text-xl font-bold text-gray-800">Products to Invoice</h3>
-            {orderInvoiceModal.order?.products?.map((product) => (
-              <div key={product.id} className="bg-white border rounded-xl p-6 hover:shadow-md transition-all">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h4 className="font-bold text-lg">{product.productName} {product.size}</h4>
-                    <p className="text-sm text-gray-600">
-                      {product.imlName} | {product.imlType} | LID: {product.lidColor} | TUB: {product.tubColor}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <input
-                      type="number"
-                      value={productAmounts[product.id] || product.budget || ''}
-                      onChange={(e) => updateProductAmount(product.id, e.target.value)}
-                      placeholder="Amount"
-                      className="w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 text-right font-bold"
-                    />
-                  </div>
-                </div>
+    return (
+      <div className="fixed inset-0 bg-[#000000b3] z-[50009] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+          {/* HEADER */}
+          <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-8 rounded-t-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-black">Deleted Order Invoices</h2>
+                <p className="opacity-90 text-lg">
+                  {ordersList.length} Orders •{" "}
+                  {deletedOrderInvoicesModal.invoices.length} Invoices
+                </p>
               </div>
-            ))}
-          </div>
-
-          {/* TOTAL & BUTTONS */}
-          <div className="pt-6 border-t-4 border-gray-200 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gradient-to-r from-gray-50 to-blue-50 p-6 rounded-2xl">
-            <div>
-              <p className="text-2xl font-black text-gray-900">
-                Total: <span className="text-emerald-600">
-                  ₹{orderInvoiceModal.order?.products?.reduce((sum, p) => {
-                    return sum + (productAmounts[p.id] || p.budget || 0);
-                  }, 0).toLocaleString()}
-                </span>
-              </p>
-            </div>
-            <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setDeleteOrderModal({ 
-                    isOpen: true, 
-                    orderId: orderInvoiceModal.order.id,
-                    order: orderInvoiceModal.order 
-                  });
-                  setOrderInvoiceModal({ isOpen: false, order: null });
-                }}
-                className="px-8 py-3 bg-gray-300 text-gray-800 rounded-xl hover:bg-gray-400 font-bold"
+                onClick={() =>
+                  setDeletedOrderInvoicesModal({
+                    isOpen: false,
+                    orderId: null,
+                    orderNumber: null,
+                    invoices: [],
+                  })
+                }
+                className="text-white rounded-2xl flex items-center justify-center text-[2vw] cursor-pointer"
               >
-                Back
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="px-12 py-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-2xl hover:shadow-2xl font-black text-lg transition-all"
-              >
-                ✅ Delete Order & Generate Invoices
+                ×
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
-const OrderInvoiceModalView = () => {
-  // ✅ GROUP INVOICES BY ORDER
-  const groupedInvoices = deletedOrderInvoicesModal.invoices.reduce((acc, invoice) => {
-    const orderNum = invoice.orderNumber || deletedOrderInvoicesModal.orderNumber || "Unknown Order";
-    if (!acc[orderNum]) {
-      acc[orderNum] = [];
-    }
-    acc[orderNum].push(invoice);
-    return acc;
-  }, {});
-
-  const ordersList = Object.entries(groupedInvoices).map(([orderNumber, invoices]) => ({
-    orderNumber,
-    invoices,
-    total: invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
-  })).sort((a, b) => new Date(b.invoices[0].invoiceDate) - new Date(a.invoices[0].invoiceDate));
-
-  return (
-    <div className="fixed inset-0 bg-[#000000b3] z-[50009] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        
-        {/* HEADER */}
-        <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-8 rounded-t-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-black">Deleted Order Invoices</h2>
-              <p className="opacity-90 text-lg">
-                {ordersList.length} Orders • {deletedOrderInvoicesModal.invoices.length} Invoices
-              </p>
-            </div>
-            <button
-              onClick={() => setDeletedOrderInvoicesModal({ isOpen: false, orderId: null, orderNumber: null, invoices: [] })}
-              className="text-white rounded-2xl flex items-center justify-center text-[2vw] cursor-pointer"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div className="p-8 space-y-6">
-          {/* ORDERS ACCORDION */}
-          <div className="space-y-3">
-            {ordersList.map((orderGroup, index) => (
-              <div key={index} className="bg-white border-2 border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                {/* ORDER HEADER */}
-                <div 
-                  className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 cursor-pointer hover:shadow-md transition-all flex justify-between items-center"
-                  onClick={() => {/* Add toggle state if needed */}}
+          <div className="p-8 space-y-6">
+            {/* ORDERS ACCORDION */}
+            <div className="space-y-3">
+              {ordersList.map((orderGroup, index) => (
+                <div
+                  key={index}
+                  className="bg-white border-2 border-gray-200 rounded-2xl shadow-sm overflow-hidden"
                 >
-                  <div>
-                    <h3 className="text-xl font-black text-gray-900">{orderGroup.orderNumber}</h3>
-                    <p className="text-sm text-gray-600">{orderGroup.invoices.length} Invoices</p>
+                  {/* ORDER HEADER */}
+                  <div
+                    className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 cursor-pointer hover:shadow-md transition-all flex justify-between items-center"
+                    onClick={() => {
+                      /* Add toggle state if needed */
+                    }}
+                  >
+                    <div>
+                      <h3 className="text-xl font-black text-gray-900">
+                        {orderGroup.orderNumber}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        {orderGroup.invoices.length} Invoices
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-black text-emerald-700">
+                        ₹{orderGroup.total.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-black text-emerald-700">
-                      ₹{orderGroup.total.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
 
-                {/* INVOICES TABLE */}
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-blue-600 text-white">
-                        <th className="p-4 text-left font-bold">Invoice No</th>
-                        <th className="p-4 text-left font-bold">Product</th>
-                        <th className="p-4 text-center font-bold">Date</th>
-                        <th className="p-4 text-right font-bold">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orderGroup.invoices.map((invoice, idx) => (
-                        <tr key={invoice.id} className="hover:bg-gray-50 border-t">
-                          <td className="p-4 font-semibold text-blue-600">{invoice.invoiceNo}</td>
-                          <td className="p-4">
-                            <div className="font-medium">{invoice.productName}</div>
-                            {invoice.size && <div className="text-sm text-gray-600">{invoice.size}</div>}
-                          </td>
-                          <td className="p-4 text-center">
-                            {new Date(invoice.invoiceDate).toLocaleDateString('en-IN')}
-                          </td>
-                          <td className="p-4 text-right font-bold text-emerald-600">
-                            ₹{invoice.amount?.toLocaleString()}
-                          </td>
+                  {/* INVOICES TABLE */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-blue-600 text-white">
+                          <th className="p-4 text-left font-bold">
+                            Invoice No
+                          </th>
+                          <th className="p-4 text-left font-bold">Product</th>
+                          <th className="p-4 text-center font-bold">Date</th>
+                          <th className="p-4 text-right font-bold">Amount</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {orderGroup.invoices.map((invoice, idx) => (
+                          <tr
+                            key={invoice.id}
+                            className="hover:bg-gray-50 border-t"
+                          >
+                            <td className="p-4 font-semibold text-blue-600">
+                              {invoice.invoiceNo}
+                            </td>
+                            <td className="p-4">
+                              <div className="font-medium">
+                                {invoice.productName}
+                              </div>
+                              {invoice.size && (
+                                <div className="text-sm text-gray-600">
+                                  {invoice.size}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4 text-center">
+                              {new Date(invoice.invoiceDate).toLocaleDateString(
+                                "en-IN",
+                              )}
+                            </td>
+                            <td className="p-4 text-right font-bold text-emerald-600">
+                              ₹{invoice.amount?.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* GRAND TOTAL */}
+            {ordersList.length > 0 && (
+              <div className="p-8 bg-gradient-to-r from-emerald-50 to-green-50 rounded-3xl border-4 border-emerald-200 shadow-2xl">
+                <div className="flex justify-between items-center text-center">
+                  <span className="text-3xl font-black text-gray-900">
+                    GRAND TOTAL
+                  </span>
+                  <span className="text-4xl font-black text-emerald-700 bg-emerald-100 px-6 py-3 rounded-2xl shadow-lg">
+                    ₹
+                    {deletedOrderInvoicesModal.invoices
+                      .reduce((sum, inv) => sum + (inv.amount || 0), 0)
+                      .toLocaleString()}
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
 
-          {/* GRAND TOTAL */}
-          {ordersList.length > 0 && (
-            <div className="p-8 bg-gradient-to-r from-emerald-50 to-green-50 rounded-3xl border-4 border-emerald-200 shadow-2xl">
-              <div className="flex justify-between items-center text-center">
-                <span className="text-3xl font-black text-gray-900">GRAND TOTAL</span>
-                <span className="text-4xl font-black text-emerald-700 bg-emerald-100 px-6 py-3 rounded-2xl shadow-lg">
-                  ₹{deletedOrderInvoicesModal.invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0).toLocaleString()}
-                </span>
+            {/* EMPTY STATE */}
+            {ordersList.length === 0 && (
+              <div className="text-center py-20">
+                <div className="w-24 h-24 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                  <span className="text-3xl text-gray-400">📄</span>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-700 mb-2">
+                  No Deleted Order Invoices
+                </h3>
+                <p className="text-gray-500 max-w-md mx-auto">
+                  Invoices from deleted orders will appear here. Generate
+                  invoices before deleting orders.
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* EMPTY STATE */}
-          {ordersList.length === 0 && (
-            <div className="text-center py-20">
-              <div className="w-24 h-24 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                <span className="text-3xl text-gray-400">📄</span>
-              </div>
-              <h3 className="text-2xl font-bold text-gray-700 mb-2">No Deleted Order Invoices</h3>
-              <p className="text-gray-500 max-w-md mx-auto">
-                Invoices from deleted orders will appear here. Generate invoices before deleting orders.
-              </p>
+            {/* CLOSE BUTTON */}
+            <div className="flex justify-end mt-12 pt-8 border-t-4 border-gray-200">
+              <button
+                onClick={() =>
+                  setDeletedOrderInvoicesModal({
+                    isOpen: false,
+                    orderId: null,
+                    orderNumber: null,
+                    invoices: [],
+                  })
+                }
+                className="px-16 py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-3xl hover:shadow-2xl font-black text-xl transition-all cursor-pointer"
+              >
+                Close
+              </button>
             </div>
-          )}
-
-          {/* CLOSE BUTTON */}
-          <div className="flex justify-end mt-12 pt-8 border-t-4 border-gray-200">
-            <button
-              onClick={() => setDeletedOrderInvoicesModal({ isOpen: false, orderId: null, orderNumber: null, invoices: [] })}
-              className="px-16 py-4 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-3xl hover:shadow-2xl font-black text-xl transition-all cursor-pointer"
-            >
-              Close
-            </button>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
-
-
+    );
+  };
 
   // production modal
   const ProductionAllocationModal = () => {
@@ -3219,10 +3136,10 @@ const OrderInvoiceModalView = () => {
     // FIXED: Calculate order and produced quantities correctly
     const calculateOrderQuantity = () => {
       let orderQty = 0;
-      if (product.imlType === "LID" || product.imlType === "LID TUB") {
+      if (product.imlType === "LID" || product.imlType === "LID & TUB") {
         orderQty += parseInt(product.lidLabelQty) || 0;
       }
-      if (product.imlType === "TUB" || product.imlType === "LID TUB") {
+      if (product.imlType === "TUB" || product.imlType === "LID & TUB") {
         orderQty += parseInt(product.tubLabelQty) || 0;
       }
       return orderQty;
@@ -3230,10 +3147,10 @@ const OrderInvoiceModalView = () => {
 
     const calculateProducedQuantity = () => {
       let producedQty = 0;
-      if (product.imlType === "LID" || product.imlType === "LID TUB") {
+      if (product.imlType === "LID" || product.imlType === "LID & TUB") {
         producedQty += parseInt(product.lidProductionQty) || 0;
       }
-      if (product.imlType === "TUB" || product.imlType === "LID TUB") {
+      if (product.imlType === "TUB" || product.imlType === "LID & TUB") {
         producedQty += parseInt(product.tubProductionQty) || 0;
       }
       return producedQty;
@@ -3749,29 +3666,6 @@ const OrderInvoiceModalView = () => {
     return Array.from(sizes).sort();
   };
 
-  // Filter orders based on search, status, product, and size
-  const filterOrders = (ordersList) => {
-    return ordersList.filter((order) => {
-      const matchesSearch =
-        order.contact.company
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        order.contact.contactName
-          .toLowerCase()
-          .includes(searchTerm.toLowerCase()) ||
-        order.contact.imlName.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const artworkStatus = getArtworkStatusForOrder(order);
-
-      const matchesStatus =
-        filterStatus === "all" || artworkStatus === filterStatus;
-
-      return matchesSearch && matchesStatus;
-    });
-  };
-
-  // Filter orders within the new grouping structure
-
   const getFilteredGroupedOrders = () => {
     const allGrouped = groupOrdersByCompany();
     const filtered = {};
@@ -3843,12 +3737,6 @@ const OrderInvoiceModalView = () => {
       false
     );
   };
-  const hasMovedAllToPurchase = (order) => {
-    return (
-      order.products?.every((product) => product.moveToPurchase === true) ||
-      false
-    );
-  };
 
   const isOrderDesignApproved = (order) => {
     if (!order?.products || order.products.length === 0) return false;
@@ -3875,30 +3763,6 @@ const OrderInvoiceModalView = () => {
     if (statuses.includes("in-progress")) return "in-progress";
     if (statuses.includes("approved")) return "approved";
     return "pending";
-  };
-
-  // Calculate statistics
-
-  const stats = {
-    total: orders.length,
-    pending: orders.filter((o) => o.status === "pending").length,
-
-    movedToPurchase: orders.reduce((count, order) => {
-      if (!order.products) return count;
-      const moved = order.products.some((p) => p.moveToPurchase === true);
-      return moved ? count + 1 : count;
-    }, 0),
-
-    // Artwork status counts (per ORDER, using normalized status)
-    artworkPending: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "pending",
-    ).length,
-    artworkInProgress: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "in-progress",
-    ).length,
-    artworkApproved: orders.filter(
-      (order) => getArtworkStatusForOrder(order) === "approved",
-    ).length,
   };
 
   // Reset size filter when product changes
@@ -4707,46 +4571,53 @@ const OrderInvoiceModalView = () => {
 
           {viewMode === "all" && (
             <>
-            <div className="flex gap-[1vw]">
-
+              <div className="flex gap-[1vw]">
                 <button
-        onClick={() => {
-          // Get ALL invoices from ALL orders (deleted order invoices)
-          const allInvoices = [];
-          const ordersData = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-          
-          ordersData.forEach((order) => {
-            if (order.invoices && order.invoices.length > 0) {
-              order.invoices.forEach((invoice) => {
-                // ✅ Filter for deleted order invoices (reason: "Order Deleted")
-                if (invoice.reason === "Order Deleted" || invoice.remarks?.includes("deletion")) {
-                  allInvoices.push({
-                    ...invoice,
-                    orderNumber: order.orderNumber || "Deleted Order"
-                  });
-                }
-              });
-            }
-          });
+                  onClick={() => {
+                    // Get ALL invoices from ALL orders (deleted order invoices)
+                    const allInvoices = [];
+                    const ordersData = JSON.parse(
+                      localStorage.getItem(STORAGE_KEY) || "[]",
+                    );
 
-          setDeletedOrderInvoicesModal({
-            isOpen: true,
-            orderId: null,
-            orderNumber: "All Deleted Orders",
-            invoices: allInvoices.sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate)) // Latest first
-          });
-        }}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
-      >
-        📋 All Invoices
-      </button>
-              <button
-                onClick={handleNewOrder}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
-              >
-                + New Order
-              </button>
-            </div>
+                    ordersData.forEach((order) => {
+                      if (order.invoices && order.invoices.length > 0) {
+                        order.invoices.forEach((invoice) => {
+                          // ✅ Filter for deleted order invoices (reason: "Order Deleted")
+                          if (
+                            invoice.reason === "Order Deleted" ||
+                            invoice.remarks?.includes("deletion")
+                          ) {
+                            allInvoices.push({
+                              ...invoice,
+                              orderNumber: order.orderNumber || "Deleted Order",
+                            });
+                          }
+                        });
+                      }
+                    });
+
+                    setDeletedOrderInvoicesModal({
+                      isOpen: true,
+                      orderId: null,
+                      orderNumber: "All Deleted Orders",
+                      invoices: allInvoices.sort(
+                        (a, b) =>
+                          new Date(b.invoiceDate) - new Date(a.invoiceDate),
+                      ), // Latest first
+                    });
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
+                >
+                  📋 All Invoices
+                </button>
+                <button
+                  onClick={handleNewOrder}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
+                >
+                  + New Order
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -5014,7 +4885,7 @@ const OrderInvoiceModalView = () => {
                                         onClick={() =>
                                           handleOpenPaymentModal(order)
                                         }
-                                        className="px-[1vw] py-[.35vw] cursor-pointer bg-gray-600 text-white rounded hover:bg-gray-700 text-[.85vw] font-medium transition-all cursor-pointer flex items-center justify-center"
+                                        className="px-[.9vw] py-[.35vw] cursor-pointer bg-gray-600 text-white rounded hover:bg-gray-700 text-[.8vw] font-medium transition-all cursor-pointer flex items-center justify-center"
                                         title="Add Payment"
                                       >
                                         💳 Payment
@@ -5022,44 +4893,40 @@ const OrderInvoiceModalView = () => {
 
                                       {order.invoices &&
                                         order.invoices.length > 0 && (
-                                          <div className="mt-2 px-[1vw] py-[.65vw] bg-amber-500 rounded-lg">
-                                            <div className="flex items-center justify-between">
-                                              <button
-                                                onClick={() =>
-                                                  setInvoiceModal({
-                                                    isOpen: true,
-                                                    orderId: order.id,
-                                                  })
-                                                } // ✅ USE THIS
-                                                className="text-white font-medium text-[.9vw] flex items-center gap-1"
-                                              >
-                                                📄 View Generated Invoice
-                                              </button>
-                                            </div>
-                                          </div>
+                                          <button
+                                            onClick={() =>
+                                              setInvoiceModal({
+                                                isOpen: true,
+                                                orderId: order.id,
+                                              })
+                                            } // ✅ USE THIS
+                                            className="text-white bg-amber-500 rounded font-medium text-[.8vw] flex items-center gap-1 py-[.35vw] px-[.9vw] cursor-pointer"
+                                          >
+                                            📄 View Generated Invoice
+                                          </button>
                                         )}
 
-                                      {!hasMovedAllToPurchase(order) && (
+                                      {!hasMovedToPurchase(order) && (
                                         <>
                                           <button
                                             onClick={() =>
                                               handleEditOrder(order)
                                             }
-                                            className="px-[1vw] py-[.35vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.85vw] font-medium transition-all"
+                                            className="px-[1vw] py-[.35vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.8vw] font-medium transition-all"
                                           >
                                             Edit
                                           </button>
                                         </>
                                       )}
                                       {/* {!hasMovedToPurchase(order) && ( */}
-                                        <button
-                                          onClick={() =>
-                                            handleDeleteOrder(order.id)
-                                          }
-                                          className="px-[1vw] py-[.35vw] cursor-pointer bg-red-600 text-white rounded hover:bg-red-700 text-[.85vw] font-medium transition-all"
-                                        >
-                                          Delete
-                                        </button>
+                                      <button
+                                        onClick={() =>
+                                          handleDeleteOrder(order.id)
+                                        }
+                                        className="px-[1vw] py-[.35vw] cursor-pointer bg-red-600 text-white rounded hover:bg-red-700 text-[.8vw] font-medium transition-all"
+                                      >
+                                        Delete
+                                      </button>
                                       {/* )} */}
                                       {isOrderDesignApproved(order) &&
                                         !isOrderMovedToPurchase(order) && (
@@ -5151,7 +5018,7 @@ const OrderInvoiceModalView = () => {
                                               // Calculate total ordered and produced
                                               const totalOrdered =
                                                 product.imlType === "LID" ||
-                                                product.imlType === "LID TUB"
+                                                product.imlType === "LID & TUB"
                                                   ? parseInt(
                                                       product.lidLabelQty,
                                                     ) || 0
@@ -5163,7 +5030,7 @@ const OrderInvoiceModalView = () => {
 
                                               const totalProduced =
                                                 product.imlType === "LID" ||
-                                                product.imlType === "LID TUB"
+                                                product.imlType === "LID & TUB"
                                                   ? parseInt(
                                                       product.lidProductionQty,
                                                     ) || 0
@@ -5191,8 +5058,8 @@ const OrderInvoiceModalView = () => {
                                                   <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw]">
                                                     {product.imlName || "N/A"}
                                                   </td>
-                                                  <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw]">
-                                                    <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded font-semibold">
+                                                  <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw]">
+                                                    <span className="inline-block px-[.5vw] py-[0.25vw] bg-blue-100 text-blue-700 rounded font-semibold whitespace-pre">
                                                       {product.imlType || "N/A"}
                                                     </span>
                                                   </td>
@@ -5322,7 +5189,7 @@ const OrderInvoiceModalView = () => {
                                                       );
                                                     })()} */}
                                                     <span
-                                                      className={`inline-block px-[1vw] py-[.25vw] rounded font-semibold ${
+                                                      className={`inline-block px-[.8vw] py-[.25vw] text-[.8vw] rounded font-semibold whitespace-pre ${
                                                         product.orderStatus ===
                                                         "Artwork Approved"
                                                           ? "bg-green-100 text-green-700"
@@ -5379,7 +5246,7 @@ const OrderInvoiceModalView = () => {
                                                                       product,
                                                                     )
                                                                   }
-                                                                  className="px-[1vw] py-[0.4vw] cursor-pointer bg-orange-600 text-white rounded hover:bg-orange-700 text-[.75vw] font-medium transition-all w-full"
+                                                                  className="px-[.75vw] py-[0.4vw] cursor-pointer bg-orange-600 text-white rounded hover:bg-orange-700 text-[.75vw] font-medium transition-all w-full whitespace-pre"
                                                                 >
                                                                   Change request
                                                                 </button>
@@ -5399,7 +5266,7 @@ const OrderInvoiceModalView = () => {
                                                                     },
                                                                   )
                                                                 }
-                                                                className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded hover:bg-purple-700 text-[.75vw] font-medium transition-all w-full"
+                                                                className="px-[.75vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded hover:bg-purple-700 text-[.75vw] font-medium transition-all w-full whitespace-pre"
                                                               >
                                                                 View Request
                                                               </button>
@@ -5414,7 +5281,7 @@ const OrderInvoiceModalView = () => {
                                                                   product.id,
                                                                 )
                                                               }
-                                                              className="px-[1vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
+                                                              className="px-[.2vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
                                                             >
                                                               Move to Purchase
                                                             </button>
@@ -5496,262 +5363,6 @@ const OrderInvoiceModalView = () => {
       {deletedOrderInvoicesModal.isOpen && <OrderInvoiceModalView />}
     </div>
   );
-
-  function FileUploadBox({ file, onFileChange, productId, small }) {
-    const [isDragging, setIsDragging] = useState(false);
-    const [previewUrl, setPreviewUrl] = useState(null);
-    const [fileType, setFileType] = useState(null);
-
-    const handleFileChange = (selectedFile) => {
-      if (selectedFile) {
-        onFileChange(selectedFile);
-
-        const type = selectedFile.type;
-        setFileType(type);
-
-        if (type?.startsWith("image/")) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setPreviewUrl(reader.result);
-          };
-          reader.readAsDataURL(selectedFile);
-        } else if (type === "application/pdf") {
-          setPreviewUrl(null);
-        } else {
-          setPreviewUrl(null);
-        }
-      }
-    };
-
-    const handleInputChange = (e) => {
-      const selectedFile = e.target.files[0];
-      handleFileChange(selectedFile);
-    };
-
-    const handleDragEnter = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(true);
-    };
-
-    const handleDragLeave = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-    };
-
-    const handleDragOver = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleDrop = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile) {
-        const allowedTypes = [
-          "image/jpeg",
-          "image/jpg",
-          "image/png",
-          "image/gif",
-          "image/webp",
-          "application/pdf",
-        ];
-        if (allowedTypes.includes(droppedFile.type)) {
-          handleFileChange(droppedFile);
-        } else {
-          alert(
-            "Please upload only images (JPEG, PNG, GIF, WebP) or PDF files",
-          );
-        }
-      }
-    };
-
-    const removeFile = (e) => {
-      e.stopPropagation();
-      onFileChange(null);
-      setPreviewUrl(null);
-      setFileType(null);
-    };
-
-    return (
-      <div
-        className={`border-2 ${
-          isDragging
-            ? "border-blue-500 bg-blue-50"
-            : "border-dashed border-gray-300"
-        } rounded-[0.6vw] p-[2vw] bg-white ${
-          small ? "min-h-[10vw]" : "min-h-[15vw]"
-        } transition-all duration-200`}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <div className="flex flex-col items-center justify-center h-full">
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={(e) => {
-              const file = e.target.files[0];
-              if (file) {
-                onFileChange(file); // Just pass the file to parent
-              }
-            }}
-            className="hidden"
-            id={`file-upload-${productId}`}
-          />
-
-          {!file ? (
-            <label
-              htmlFor={`file-upload-${productId}`}
-              className="cursor-pointer flex flex-col items-center w-full"
-            >
-              <div
-                className={`w-[3.5vw] h-[3.5vw] ${
-                  isDragging ? "bg-blue-200" : "bg-gray-200"
-                } rounded-full flex items-center justify-center mb-[0.8vw] transition-all`}
-              >
-                <svg
-                  className={`w-[2vw] h-[2vw] ${
-                    isDragging ? "text-blue-600" : "text-gray-500"
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-              </div>
-              <p
-                className={`text-[0.85vw] ${
-                  isDragging ? "text-blue-600 font-medium" : "text-gray-500"
-                } my-[0.2vw]`}
-              >
-                {isDragging ? "Drop file here" : "Upload Design File"}
-              </p>
-              <p className="text-[0.75vw] text-gray-400 my-[0.2vw]">
-                Click to browse or drag & drop
-              </p>
-              <p className="text-[0.7vw] text-gray-400 mt-[0.5vw]">
-                Supports: JPG, PNG, GIF, WebP, PDF
-              </p>
-            </label>
-          ) : (
-            <div className="w-full">
-              {fileType && fileType?.startsWith("image/") && previewUrl ? (
-                <div className="relative">
-                  <img
-                    src={previewUrl}
-                    alt="Preview"
-                    className="w-full h-auto max-h-[12vw] object-contain rounded-[0.4vw] border border-gray-200"
-                  />
-                  <button
-                    onClick={removeFile}
-                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-all shadow-md"
-                    title="Remove file"
-                  >
-                    ×
-                  </button>
-                  <div className="mt-2 text-center">
-                    <p className="text-[0.8vw] text-gray-700 font-medium truncate">
-                      {file.name}
-                    </p>
-                    <p className="text-[0.7vw] text-gray-500">
-                      {(file.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
-                </div>
-              ) : fileType === "application/pdf" ? (
-                <div className="flex flex-col items-center">
-                  <div className="relative">
-                    <div className="w-[8vw] h-[10vw] bg-red-50 rounded-[0.4vw] border-2 border-red-200 flex flex-col items-center justify-center">
-                      <svg
-                        className="w-[4vw] h-[4vw] text-red-500"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
-                        <path
-                          d="M14 2v6h6M10 13h4m-4 4h4"
-                          stroke="white"
-                          strokeWidth="1"
-                        />
-                      </svg>
-                      <span className="text-[0.85vw] font-bold text-red-600 mt-1">
-                        PDF
-                      </span>
-                    </div>
-                    <button
-                      onClick={removeFile}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-all shadow-md"
-                      title="Remove file"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="mt-2 text-center max-w-full">
-                    <p className="text-[0.8vw] text-gray-700 font-medium truncate px-2">
-                      {file.name}
-                    </p>
-                    <p className="text-[0.7vw] text-gray-500">
-                      {(file.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <div className="relative">
-                    <div className="w-[6.5vw] h-[8vw] bg-gray-100 rounded-[0.4vw] border-2 border-gray-300 flex flex-col items-center justify-center">
-                      <svg
-                        className="w-[4vw] h-[4vw] text-gray-400"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
-                      </svg>
-                    </div>
-                    <button
-                      onClick={removeFile}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-all shadow-md"
-                      title="Remove file"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="mt-2 text-center">
-                    <p className="text-[0.8vw] text-gray-700 font-medium truncate">
-                      {file.name}
-                    </p>
-                    <p className="text-[0.7vw] text-gray-500">
-                      {(file.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <label
-                htmlFor={`file-upload-${productId}`}
-                className="mt-3 block w-full"
-              >
-                <div className="cursor-pointer text-center px-3 py-2 border border-blue-500 text-blue-600 rounded-[0.4vw] text-[0.8vw] font-medium hover:bg-blue-50 transition-all">
-                  Change File
-                </div>
-              </label>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
 }
 
 function Select({
