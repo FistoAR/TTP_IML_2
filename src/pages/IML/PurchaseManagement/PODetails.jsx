@@ -72,6 +72,7 @@ const PODetails = () => {
 
   const hasPromptedRef = useRef(false);
 
+  const [syncTubWithLid, setSyncTubWithLid] = useState({});
 
   // Load fresh order data from localStorage
   useEffect(() => {
@@ -125,137 +126,135 @@ const PODetails = () => {
 
   // Load existing PO details
   useEffect(() => {
-  if (!order) return;
+    if (!order) return;
 
     const isFirstRun = !hasPromptedRef.current;
-    hasPromptedRef.current = true;     
-
-  try {
-    const storedPO = localStorage.getItem(STORAGE_KEY_PO);
-    if (!storedPO) return;
-
-    const allPODetails = JSON.parse(storedPO);
-    const existingPO = allPODetails[order.id];
-
-    // ---- 1️⃣ Seed existing PO details (DO NOT overwrite blindly) ----
-    if (existingPO?.products) {
-      setProductPODetails((prev) => ({
-        ...prev,
-        ...existingPO.products,
-      }));
-    }
-
-    // ---- 2️⃣ Prompt only once, only from OrdersManagement ----
-     if (!isFirstRun || !fromOrdersManagement || !existingPO?.products) {
-      return;
-    }
-    
-
-    const sourceProducts = [];
-    let sourcePO = null;
-
-    // ---- 3️⃣ Collect ALL products that already have PO details ----
-    for (const pid of Object.keys(existingPO.products)) {
-      const p = existingPO.products[pid];
-      if (!p) continue;
-
-      let poNumber = null;
-      let supplier = null;
-
-      if (p.poNumber && p.supplier) {
-        poNumber = p.poNumber;
-        supplier = p.supplier;
-      } else if (p.lid?.poNumber && p.lid?.supplier) {
-        poNumber = p.lid.poNumber;
-        supplier = p.lid.supplier;
-      } else if (p.tub?.poNumber && p.tub?.supplier) {
-        poNumber = p.tub.poNumber;
-        supplier = p.tub.supplier;
-      }
-
-      if (poNumber && supplier) {
-        const found = order.products?.find(
-          (x) => String(x.id) === String(pid)
-        );
-
-        sourceProducts.push({
-          id: pid,
-          name: found?.productName || found?.name || `#${pid}`,
-        });
-
-        // first valid PO becomes the copy source
-        if (!sourcePO) {
-          sourcePO = { poNumber, supplier };
-        }
-      }
-    }
-
-    if (!sourcePO || sourceProducts.length === 0) return;
-
-    // 🔒 lock prompt for this navigation
     hasPromptedRef.current = true;
 
-    // ---- 4️⃣ Build multi-product confirmation message ----
-    const productListText = sourceProducts
-      .map((p) => `• ${p.name}`)
-      .join("\n");
+    try {
+      const storedPO = localStorage.getItem(STORAGE_KEY_PO);
+      if (!storedPO) return;
 
-    const confirmMsg =
-      `PO details already exists:\n\n` +
-      
-      `Do you want to copy this PO number and supplier to all other products in this order that are being moved to purchase?\n\n` +
-      `Note: Label type will NOT be copied; it must be entered manually for each product.`;
+      const allPODetails = JSON.parse(storedPO);
+      const existingPO = allPODetails[order.id];
 
-    if (!window.confirm(confirmMsg)) return;
+      // ---- 1️⃣ Seed existing PO details (DO NOT overwrite blindly) ----
+      if (existingPO?.products) {
+        setProductPODetails((prev) => ({
+          ...prev,
+          ...existingPO.products,
+        }));
+      }
 
-    // ---- 5️⃣ Copy PO number + supplier (NOT labelType) ----
-    setProductPODetails((prev) => {
-      const updated = { ...prev };
+      // ---- 2️⃣ Prompt only once, only from OrdersManagement ----
+      if (!isFirstRun || !fromOrdersManagement || !existingPO?.products) {
+        return;
+      }
 
-      (order.products || [])
-        .filter((prod) => prod.moveToPurchase)
-        .forEach((prod) => {
-          const pid = prod.id;
+      const sourceProducts = [];
+      let sourcePO = null;
 
-          if (!updated[pid]) {
-            updated[pid] =
-              prod.imlType === "LID & TUB"
-                ? {
-                    lid: { poNumber: "", labelType: "", supplier: "" },
-                    tub: { poNumber: "", labelType: "", supplier: "" },
-                  }
-                : { poNumber: "", labelType: "", supplier: "" };
+      // ---- 3️⃣ Collect ALL products that already have PO details ----
+      for (const pid of Object.keys(existingPO.products)) {
+        const p = existingPO.products[pid];
+        if (!p) continue;
+
+        let poNumber = null;
+        let supplier = null;
+
+        if (p.poNumber && p.supplier) {
+          poNumber = p.poNumber;
+          supplier = p.supplier;
+        } else if (p.lid?.poNumber && p.lid?.supplier) {
+          poNumber = p.lid.poNumber;
+          supplier = p.lid.supplier;
+        } else if (p.tub?.poNumber && p.tub?.supplier) {
+          poNumber = p.tub.poNumber;
+          supplier = p.tub.supplier;
+        }
+
+        if (poNumber && supplier) {
+          const found = order.products?.find(
+            (x) => String(x.id) === String(pid),
+          );
+
+          sourceProducts.push({
+            id: pid,
+            name: found?.productName || found?.name || `#${pid}`,
+          });
+
+          // first valid PO becomes the copy source
+          if (!sourcePO) {
+            sourcePO = { poNumber, supplier };
           }
+        }
+      }
 
-          if (prod.imlType === "LID & TUB") {
-            updated[pid].lid = {
-              ...updated[pid].lid,
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid].lid?.labelType || "",
-            };
-            updated[pid].tub = {
-              ...updated[pid].tub,
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid].tub?.labelType || "",
-            };
-          } else {
-            updated[pid] = {
-              ...updated[pid],
-              poNumber: sourcePO.poNumber,
-              supplier: sourcePO.supplier,
-              labelType: updated[pid]?.labelType || "",
-            };
-          }
-        });
+      if (!sourcePO || sourceProducts.length === 0) return;
 
-      return updated;
-    });
-  } catch (err) {
-    console.error("Error loading existing PO details:", err);
-  }
-}, [order, fromOrdersManagement]);
+      // 🔒 lock prompt for this navigation
+      hasPromptedRef.current = true;
+
+      // ---- 4️⃣ Build multi-product confirmation message ----
+      const productListText = sourceProducts
+        .map((p) => `• ${p.name}`)
+        .join("\n");
+
+      const confirmMsg =
+        `PO details already exists:\n\n` +
+        `Do you want to copy this PO number and supplier to all other products in this order that are being moved to purchase?\n\n` +
+        `Note: Label type will NOT be copied; it must be entered manually for each product.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      // ---- 5️⃣ Copy PO number + supplier (NOT labelType) ----
+      setProductPODetails((prev) => {
+        const updated = { ...prev };
+
+        (order.products || [])
+          .filter((prod) => prod.moveToPurchase)
+          .forEach((prod) => {
+            const pid = prod.id;
+
+            if (!updated[pid]) {
+              updated[pid] =
+                prod.imlType === "LID & TUB"
+                  ? {
+                      lid: { poNumber: "", labelType: "", supplier: "" },
+                      tub: { poNumber: "", labelType: "", supplier: "" },
+                    }
+                  : { poNumber: "", labelType: "", supplier: "" };
+            }
+
+            if (prod.imlType === "LID & TUB") {
+              updated[pid].lid = {
+                ...updated[pid].lid,
+                poNumber: sourcePO.poNumber,
+                supplier: sourcePO.supplier,
+                labelType: updated[pid].lid?.labelType || "",
+              };
+              updated[pid].tub = {
+                ...updated[pid].tub,
+                poNumber: sourcePO.poNumber,
+                supplier: sourcePO.supplier,
+                labelType: updated[pid].tub?.labelType || "",
+              };
+            } else {
+              updated[pid] = {
+                ...updated[pid],
+                poNumber: sourcePO.poNumber,
+                supplier: sourcePO.supplier,
+                labelType: updated[pid]?.labelType || "",
+              };
+            }
+          });
+
+        return updated;
+      });
+    } catch (err) {
+      console.error("Error loading existing PO details:", err);
+    }
+  }, [order, fromOrdersManagement]);
 
   // Click outside to close suggestions
   useEffect(() => {
@@ -314,73 +313,94 @@ const PODetails = () => {
 
   // Apply global values to all products
   const handleApplyToAll = () => {
-  if (!globalPONumber && !globalLabelType && !globalSupplier) {
-    alert("Please enter at least one value to apply to all products");
-    return;
-  }
+    if (!globalPONumber && !globalLabelType && !globalSupplier) {
+      alert("Please enter at least one value to apply to all products");
+      return;
+    }
 
-  const isSingleProductFlow = mode === "single-product" && movedProductId;
+    const isSingleProductFlow = mode === "single-product" && movedProductId;
 
-  const targetProducts = isSingleProductFlow
-    ? order.products.filter(p => p.id === movedProductId)
-    : order.products.filter(p => p.moveToPurchase);
+    const targetProducts = isSingleProductFlow
+      ? order.products.filter((p) => p.id === movedProductId)
+      : order.products.filter((p) => p.moveToPurchase);
 
-  setProductPODetails((prev) => {
-    const updated = { ...prev };
+    setProductPODetails((prev) => {
+      const updated = { ...prev };
 
-    targetProducts.forEach((product) => {
-      const pid = product.id;
+      targetProducts.forEach((product) => {
+        const pid = product.id;
 
-      // ---- ensure base structure exists ----
-      if (!updated[pid]) {
-        updated[pid] =
-          product.imlType === "LID & TUB"
-            ? {
-                lid: { poNumber: "", labelType: "", supplier: "" },
-                tub: { poNumber: "", labelType: "", supplier: "" },
-              }
-            : { poNumber: "", labelType: "", supplier: "" };
-      }
+        // ---- ensure base structure exists ----
+        if (!updated[pid]) {
+          updated[pid] =
+            product.imlType === "LID & TUB"
+              ? {
+                  lid: { poNumber: "", labelType: "", supplier: "" },
+                  tub: { poNumber: "", labelType: "", supplier: "" },
+                }
+              : { poNumber: "", labelType: "", supplier: "" };
+        }
 
-      if (product.imlType === "LID & TUB") {
-        updated[pid] = {
-          ...updated[pid],
-          lid: {
-            ...updated[pid].lid,
-            poNumber: globalPONumber || updated[pid].lid?.poNumber || "",
-            labelType: globalLabelType || updated[pid].lid?.labelType || "",
-            supplier: globalSupplier || updated[pid].lid?.supplier || "",
-          },
-          tub: {
-            ...updated[pid].tub,
-            poNumber: globalPONumber || updated[pid].tub?.poNumber || "",
-            labelType: globalLabelType || updated[pid].tub?.labelType || "",
-            supplier: globalSupplier || updated[pid].tub?.supplier || "",
-          },
-        };
-      } else {
-        updated[pid] = {
-          ...updated[pid],
-          poNumber: globalPONumber || updated[pid].poNumber || "",
-          labelType: globalLabelType || updated[pid].labelType || "",
-          supplier: globalSupplier || updated[pid].supplier || "",
-        };
-      }
+        if (product.imlType === "LID & TUB") {
+          updated[pid] = {
+            ...updated[pid],
+            lid: {
+              ...updated[pid].lid,
+              poNumber: globalPONumber || updated[pid].lid?.poNumber || "",
+              labelType: globalLabelType || updated[pid].lid?.labelType || "",
+              supplier: globalSupplier || updated[pid].lid?.supplier || "",
+            },
+            tub: {
+              ...updated[pid].tub,
+              poNumber: globalPONumber || updated[pid].tub?.poNumber || "",
+              labelType: globalLabelType || updated[pid].tub?.labelType || "",
+              supplier: globalSupplier || updated[pid].tub?.supplier || "",
+            },
+          };
+        } else {
+          updated[pid] = {
+            ...updated[pid],
+            poNumber: globalPONumber || updated[pid].poNumber || "",
+            labelType: globalLabelType || updated[pid].labelType || "",
+            supplier: globalSupplier || updated[pid].supplier || "",
+          };
+        }
+      });
+
+      return updated;
     });
 
-    return updated;
-  });
+    alert("✅ Values applied to all applicable products!");
+  };
 
-  alert("✅ Values applied to all applicable products!");
-};
+  const handleSyncTubToggle = (productId, checked) => {
+    setSyncTubWithLid((prev) => ({ ...prev, [productId]: checked }));
 
+    if (checked) {
+      // Copy LID values to TUB
+      setProductPODetails((prev) => {
+        const lid = prev[productId]?.lid || {};
+        return {
+          ...prev,
+          [productId]: {
+            ...prev[productId],
+            tub: {
+              poNumber: lid.poNumber || "",
+              labelType: lid.labelType || "",
+              supplier: lid.supplier || "",
+            },
+          },
+        };
+      });
+    }
+  };
 
   // Update individual product field
   const updateProductField = (productId, field, value, part = null) => {
     setProductPODetails((prev) => {
       const productDetails = prev[productId] || {};
       if (part) {
-        return {
+        const updated = {
           ...prev,
           [productId]: {
             ...productDetails,
@@ -390,6 +410,19 @@ const PODetails = () => {
             },
           },
         };
+
+        // Auto-sync: if editing LID and sync is ON, copy to TUB
+        if (part === "lid" && syncTubWithLid[productId]) {
+          updated[productId] = {
+            ...updated[productId],
+            tub: {
+              ...updated[productId].tub,
+              [field]: value,
+            },
+          };
+        }
+
+        return updated;
       }
       return {
         ...prev,
@@ -445,109 +478,107 @@ const PODetails = () => {
   // Handle form submission
   // ---------- REPLACE existing handleSubmit ----------
   const handleSubmit = () => {
-  const isSingleProductFlow = mode === "single-product" && movedProductId;
+    const isSingleProductFlow = mode === "single-product" && movedProductId;
 
-  const activeProducts = isSingleProductFlow
-    ? order.products.filter(p => p.id === movedProductId)
-    : order.products.filter(p => p.moveToPurchase);
+    const activeProducts = isSingleProductFlow
+      ? order.products.filter((p) => p.id === movedProductId)
+      : order.products.filter((p) => p.moveToPurchase);
 
-  // ---------- VALIDATION ----------
-  const missingFields = [];
+    // ---------- VALIDATION ----------
+    const missingFields = [];
 
-  activeProducts.forEach((product) => {
-    const details = productPODetails[product.id];
+    activeProducts.forEach((product) => {
+      const details = productPODetails[product.id];
 
-    if (product.imlType === "LID & TUB") {
-      const lid = details?.lid || {};
-      const tub = details?.tub || {};
+      if (product.imlType === "LID & TUB") {
+        const lid = details?.lid || {};
+        const tub = details?.tub || {};
 
-      if (!lid.poNumber || !lid.supplier || !tub.poNumber || !tub.supplier) {
-        missingFields.push(`${product.productName} (LID/TUB)`);
+        if (!lid.poNumber || !lid.supplier || !tub.poNumber || !tub.supplier) {
+          missingFields.push(`${product.productName} (LID/TUB)`);
+        }
+      } else {
+        if (!details?.poNumber || !details?.supplier) {
+          missingFields.push(product.productName);
+        }
       }
-    } else {
-      if (!details?.poNumber || !details?.supplier) {
-        missingFields.push(product.productName);
-      }
-    }
-  });
+    });
 
-  // if (missingFields.length) {
-  //   alert(`Please fill required PO fields for:\n${missingFields.join("\n")}`);
-  //   return;
-  // }
+    // if (missingFields.length) {
+    //   alert(`Please fill required PO fields for:\n${missingFields.join("\n")}`);
+    //   return;
+    // }
 
-  try {
-    // ---------- SAVE PO DETAILS ----------
-    const storedPO = localStorage.getItem(STORAGE_KEY_PO);
-    const allPODetails = storedPO ? JSON.parse(storedPO) : {};
+    try {
+      // ---------- SAVE PO DETAILS ----------
+      const storedPO = localStorage.getItem(STORAGE_KEY_PO);
+      const allPODetails = storedPO ? JSON.parse(storedPO) : {};
 
-    allPODetails[order.id] = {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      company: order.contact.company,
-      products: productPODetails,
-      updatedAt: new Date().toISOString(),
-    };
+      allPODetails[order.id] = {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        company: order.contact.company,
+        products: productPODetails,
+        updatedAt: new Date().toISOString(),
+      };
 
-    localStorage.setItem(STORAGE_KEY_PO, JSON.stringify(allPODetails));
-    alert("✅ PO Details saved successfully!");
+      localStorage.setItem(STORAGE_KEY_PO, JSON.stringify(allPODetails));
+      alert("✅ PO Details saved successfully!");
 
-    // ---------- UPDATE ORDER STATUS ----------
-    const storedOrdersStr = localStorage.getItem(STORAGE_KEY_ORDERS);
-    if (storedOrdersStr) {
-      const allOrders = JSON.parse(storedOrdersStr);
+      // ---------- UPDATE ORDER STATUS ----------
+      const storedOrdersStr = localStorage.getItem(STORAGE_KEY_ORDERS);
+      if (storedOrdersStr) {
+        const allOrders = JSON.parse(storedOrdersStr);
 
-      const updatedOrders = allOrders.map((o) => {
-        if (o.id !== order.id) return o;
+        const updatedOrders = allOrders.map((o) => {
+          if (o.id !== order.id) return o;
 
-        return {
-          ...o,
-          products: o.products.map((prod) => {
-            if (isSingleProductFlow) {
-              return prod.id === movedProductId
+          return {
+            ...o,
+            products: o.products.map((prod) => {
+              if (isSingleProductFlow) {
+                return prod.id === movedProductId
+                  ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
+                  : prod;
+              }
+
+              return prod.moveToPurchase
                 ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
                 : prod;
-            }
+            }),
+          };
+        });
 
-            return prod.moveToPurchase
-              ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-              : prod;
-          }),
-        };
-      });
+        localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
+        window.dispatchEvent(new Event("ordersUpdated"));
 
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders));
-      window.dispatchEvent(new Event("ordersUpdated"));
+        // update local state
+        setOrder((prev) => {
+          if (!prev) return prev;
 
-      // update local state
-      setOrder((prev) => {
-        if (!prev) return prev;
+          return {
+            ...prev,
+            products: prev.products.map((prod) => {
+              if (isSingleProductFlow) {
+                return prod.id === movedProductId
+                  ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
+                  : prod;
+              }
 
-        return {
-          ...prev,
-          products: prev.products.map((prod) => {
-            if (isSingleProductFlow) {
-              return prod.id === movedProductId
+              return prod.moveToPurchase
                 ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
                 : prod;
-            }
+            }),
+          };
+        });
+      }
 
-            return prod.moveToPurchase
-              ? { ...prod, orderStatus: "PO Raised & Labels in Process" }
-              : prod;
-          }),
-        };
-      });
+      navigate("/iml/purchase", { state: { refreshOrders: true } });
+    } catch (err) {
+      console.error("Error saving PO details:", err);
+      alert("❌ Error saving PO details.");
     }
-
-    navigate("/iml/purchase", { state: { refreshOrders: true } });
-
-  } catch (err) {
-    console.error("Error saving PO details:", err);
-    alert("❌ Error saving PO details.");
-  }
-};
-
+  };
 
   const handleBack = () => {
     navigate("/iml/purchase", {
@@ -689,25 +720,25 @@ const PODetails = () => {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-200">
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                       S.No
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                       Product
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                       Size
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold min-w-[6vw]">
                       IML Name
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold min-w-[7vw]">
                       Type
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold min-w-[6vw]">
                       Lid Order Qty
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-left text-[.85vw] font-semibold min-w-[6vw]">
                       Tub Order Qty
                     </th>
                     <th className="border border-gray-300 px-[1.2vw] py-[.75vw] text-left text-[.85vw] font-semibold">
@@ -719,7 +750,7 @@ const PODetails = () => {
                     <th className="border border-gray-300 px-[1.2vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                       Supplier <span className="text-red-500">*</span>
                     </th>
-                    <th className="border border-gray-300 px-[1vw] py-[.75vw] text-center text-[.85vw] font-semibold">
+                    <th className="border border-gray-300 px-[.85vw] py-[.75vw] text-center text-[.85vw] font-semibold">
                       Action
                     </th>
                   </tr>
@@ -736,32 +767,32 @@ const PODetails = () => {
 
                     return (
                       <tr key={product.id || idx} className="hover:bg-gray-50">
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw]">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw]">
                           {idx + 1}
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-medium">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-medium">
                           {product.productName}
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw]">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw]">
                           {product.size}
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw]">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw]">
                           {product.imlName}
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw]">
-                          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw]">
+                          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-700 rounded font-semibold">
                             {product.imlType}
                           </span>
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {quantityLid}
                         </td>
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {quantityTub}
                         </td>
 
                         {/* PO Number Input */}
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {product.imlType === "LID & TUB" ? (
                             <div className="flex flex-col gap-1">
                               <div className="flex gap-[1vw]">
@@ -796,8 +827,19 @@ const PODetails = () => {
                                     )
                                   }
                                   className="border px-2 py-1 rounded text-sm"
-                                />
-                              </div>
+                                  />
+                                  </div>
+                                 <label className="flex items-center gap-[0.4vw] mt-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={syncTubWithLid[product.id] || false}
+                                    onChange={(e) => handleSyncTubToggle(product.id, e.target.checked)}
+                                    className="accent-blue-600 cursor-pointer"
+                                  />
+                                  <span className="text-[.75vw] text-gray-600 font-normal">
+                                    Apply the same for TUB
+                                  </span>
+                                </label>
                             </div>
                           ) : (
                             <input
@@ -817,7 +859,7 @@ const PODetails = () => {
                         </td>
 
                         {/* Label Type Input with Autocomplete */}
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {product.imlType === "LID & TUB" ? (
                             <div className="flex flex-col gap-1 relative">
                               {/* Lid Label Type */}
@@ -948,7 +990,7 @@ const PODetails = () => {
                         </td>
 
                         {/* Supplier Input with Autocomplete */}
-                        <td className="border border-gray-300 px-[1vw] py-[.75vw] text-[.85vw] font-semibold">
+                        <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {product.imlType === "LID & TUB" ? (
                             <div className="flex flex-col gap-1 relative">
                               {/* Lid Supplier */}

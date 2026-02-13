@@ -109,6 +109,8 @@ export default function OrdersManagement2() {
     invoices: [],
   });
 
+  const [tempChangeRequest, setTempChangeRequest] = useState(null);
+
   const IMLNAME_OPTIONS = [
     "Premium IML Labels",
     "Quality IML Solutions",
@@ -762,30 +764,56 @@ export default function OrdersManagement2() {
     setChangeRequestModal({ isOpen: false, order: null, product: null });
   };
 
+  // const handleDeleteRequest = () => {
+  //   const now = new Date().toISOString();
+  //   const updatedOrders = orders.map((o) =>
+  //     o.id === changeRequestModal.order.id
+  //       ? {
+  //           ...o,
+  //           products: o.products.map((p) =>
+  //             p.id === changeRequestModal.product.id
+  //               ? {
+  //                   ...p,
+  //                   changeRequests: [
+  //                     ...(p.changeRequests || []),
+  //                     { type: "delete", timestamp: now },
+  //                   ],
+  //                 }
+  //               : p,
+  //           ),
+  //         }
+  //       : o,
+  //   );
+  //   setOrders(updatedOrders);
+  //   localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+  //   window.dispatchEvent(new Event("ordersUpdated"));
+  //   handleCloseChangeRequest();
+  //   setEstimateRevisionModal({
+  //     isOpen: true,
+  //     revision: {
+  //       orderId: changeRequestModal.order.id,
+  //       productId: changeRequestModal.product.id,
+  //       productDetails: changeRequestModal.product,
+  //       triggerType: "delete",
+  //       timestamp: now,
+  //       originalEstimate: changeRequestModal.order.orderEstimate,
+  //     },
+  //   });
+  // };
+
   const handleDeleteRequest = () => {
     const now = new Date().toISOString();
-    const updatedOrders = orders.map((o) =>
-      o.id === changeRequestModal.order.id
-        ? {
-            ...o,
-            products: o.products.map((p) =>
-              p.id === changeRequestModal.product.id
-                ? {
-                    ...p,
-                    changeRequests: [
-                      ...(p.changeRequests || []),
-                      { type: "delete", timestamp: now },
-                    ],
-                  }
-                : p,
-            ),
-          }
-        : o,
-    );
-    setOrders(updatedOrders);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new Event("ordersUpdated"));
-    handleCloseChangeRequest();
+    // TEMP ONLY - don't persist yet
+    setTempChangeRequest({
+      type: "delete",
+      timestamp: now,
+      orderId: changeRequestModal.order.id,
+      productId: changeRequestModal.product.id,
+      productDetails: changeRequestModal.product,
+      originalEstimate: changeRequestModal.order.orderEstimate,
+    });
+    handleCloseChangeRequest(); // Close without persisting
+    // Open estimate modal
     setEstimateRevisionModal({
       isOpen: true,
       revision: {
@@ -798,6 +826,111 @@ export default function OrdersManagement2() {
       },
     });
   };
+
+  // const handleSubmitRequest = (localProduct) => {
+  //   // ✅ Pass localProduct as param
+  //   const now = new Date().toISOString();
+  //   const originalProduct = changeRequestModal.product;
+
+  //   // ✅ CAPTURE CHANGES - Compare original vs edited
+  //   const requestedChanges = {
+  //     productName:
+  //       localProduct.productName !== originalProduct.productName
+  //         ? localProduct.productName
+  //         : undefined,
+  //     size:
+  //       localProduct.size !== originalProduct.size
+  //         ? localProduct.size
+  //         : undefined,
+  //     imlName:
+  //       localProduct.imlName !== originalProduct.imlName
+  //         ? localProduct.imlName
+  //         : undefined,
+  //     imlType:
+  //       localProduct.imlType !== originalProduct.imlType
+  //         ? localProduct.imlType
+  //         : undefined,
+  //     lidColor:
+  //       localProduct.lidColor !== originalProduct.lidColor
+  //         ? localProduct.lidColor
+  //         : undefined,
+  //     tubColor:
+  //       localProduct.tubColor !== originalProduct.tubColor
+  //         ? localProduct.tubColor
+  //         : undefined,
+  //     lidLabelQty:
+  //       localProduct.lidLabelQty !== originalProduct.lidLabelQty
+  //         ? localProduct.lidLabelQty
+  //         : undefined,
+  //     lidProductionQty:
+  //       localProduct.lidProductionQty !== originalProduct.lidProductionQty
+  //         ? localProduct.lidProductionQty
+  //         : undefined,
+  //     tubLabelQty:
+  //       localProduct.tubLabelQty !== originalProduct.tubLabelQty
+  //         ? localProduct.tubLabelQty
+  //         : undefined,
+  //     tubProductionQty:
+  //       localProduct.tubProductionQty !== originalProduct.tubProductionQty
+  //         ? localProduct.tubProductionQty
+  //         : undefined,
+  //     // Add more fields as needed
+  //   };
+
+  //   // ✅ Remove undefined values (clean object)
+  //   const cleanRequestedChanges = Object.fromEntries(
+  //     Object.entries(requestedChanges).filter(([_, v]) => v !== undefined),
+  //   );
+
+  //   const updatedOrders = orders.map((o) =>
+  //     o.id === changeRequestModal.order.id
+  //       ? {
+  //           ...o,
+  //           products: o.products.map((p) =>
+  //             p.id === originalProduct.id
+  //               ? {
+  //                   ...p,
+  //                   orderStatus: "CR Approval Pending",
+  //                   changeRequests: [
+  //                     ...(p.changeRequests || []),
+  //                     {
+  //                       type: "change",
+  //                       timestamp: now,
+  //                       originalDetails: { ...originalProduct }, // Clone to avoid mutation
+  //                       requestedChanges: cleanRequestedChanges, // ✅ Now populated!
+  //                     },
+  //                   ],
+  //                 }
+  //               : p,
+  //           ),
+  //         }
+  //       : o,
+  //   );
+
+  //   setOrders(updatedOrders);
+  //   localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+  //   window.dispatchEvent(new Event("ordersUpdated"));
+
+  //   handleCloseChangeRequest();
+
+  //   // ✅ Pass localProduct details to revision modal
+  //   setEstimateRevisionModal({
+  //     isOpen: true,
+  //     revision: {
+  //       orderId: changeRequestModal.order.id,
+  //       productId: changeRequestModal.product.id,
+  //       productDetails: {
+  //         ...originalProduct,
+  //         requestedChanges: cleanRequestedChanges,
+  //       }, // ✅ Include changes
+  //       triggerType: "submit",
+  //       timestamp: now,
+  //       originalEstimate: changeRequestModal.order.orderEstimate,
+  //     },
+  //   });
+  // };
+
+  // handle move to production
 
   const handleSubmitRequest = (localProduct) => {
     // ✅ Pass localProduct as param
@@ -854,38 +987,20 @@ export default function OrdersManagement2() {
       Object.entries(requestedChanges).filter(([_, v]) => v !== undefined),
     );
 
-    const updatedOrders = orders.map((o) =>
-      o.id === changeRequestModal.order.id
-        ? {
-            ...o,
-            products: o.products.map((p) =>
-              p.id === originalProduct.id
-                ? {
-                    ...p,
-                    orderStatus: "CR Approval Pending",
-                    changeRequests: [
-                      ...(p.changeRequests || []),
-                      {
-                        type: "change",
-                        timestamp: now,
-                        originalDetails: { ...originalProduct }, // Clone to avoid mutation
-                        requestedChanges: cleanRequestedChanges, // ✅ Now populated!
-                      },
-                    ],
-                  }
-                : p,
-            ),
-          }
-        : o,
-    );
+    // 🚫 TEMP ONLY - DON'T PERSIST YET (same as delete)
+    setTempChangeRequest({
+      type: "change",
+      timestamp: now,
+      orderId: changeRequestModal.order.id,
+      productId: changeRequestModal.product.id,
+      productDetails: { ...originalProduct },
+      requestedChanges: cleanRequestedChanges,
+      originalEstimate: changeRequestModal.order.orderEstimate,
+    });
 
-    setOrders(updatedOrders);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new Event("ordersUpdated"));
+    handleCloseChangeRequest(); // Close WITHOUT persisting
 
-    handleCloseChangeRequest();
-
-    // ✅ Pass localProduct details to revision modal
+    // ✅ Open estimate modal (same as before)
     setEstimateRevisionModal({
       isOpen: true,
       revision: {
@@ -894,7 +1009,7 @@ export default function OrdersManagement2() {
         productDetails: {
           ...originalProduct,
           requestedChanges: cleanRequestedChanges,
-        }, // ✅ Include changes
+        },
         triggerType: "submit",
         timestamp: now,
         originalEstimate: changeRequestModal.order.orderEstimate,
@@ -902,7 +1017,6 @@ export default function OrdersManagement2() {
     });
   };
 
-  // handle move to production
   const handleMoveToProduction = (order, product) => {
     const remaining = calculateRemainingLabels(product);
 
@@ -1146,7 +1260,7 @@ export default function OrdersManagement2() {
         <div className="bg-white rounded-lg max-w-[50%] w-full max-h-[90vh] overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gray-50">
-            <h2 className="text-1.25vw font-semibold text-gray-800">
+            <h2 className="text-[1.25vw] font-semibold text-gray-800">
               Change Request - {product.productName} {product.size}
             </h2>
             <button
@@ -1163,6 +1277,7 @@ export default function OrdersManagement2() {
               <Input
                 label="Product Name"
                 value={localProduct.productName || ""}
+                disabled={true}
                 onChange={(e) =>
                   updateLocalField("productName", e.target.value)
                 }
@@ -1170,6 +1285,7 @@ export default function OrdersManagement2() {
               <Input
                 label="Size"
                 value={localProduct.size || ""}
+                disabled={true}
                 onChange={(e) => updateLocalField("size", e.target.value)}
               />
             </div>
@@ -1422,6 +1538,8 @@ export default function OrdersManagement2() {
   const ViewRequestModal = () => {
     // ✅ ADD LOCAL STATE for immediate updates
     const [localOrders, setLocalOrders] = useState(orders);
+    const [invoiceNumber, setInvoiceNumber] = useState("");
+
 
     useEffect(() => {
       // Sync with parent orders
@@ -1436,13 +1554,24 @@ export default function OrdersManagement2() {
       return null;
     }
 
-    const { order, product } = viewRequestModal;
+    const { order, product: modalProduct } = viewRequestModal; // Rename for clarity
 
-    // ✅ USE LOCAL STATE - Updates immediately
+    // ✅ SAFER LOOKUP with fallback
     const currentOrder = localOrders.find((o) => o.id === order.id);
     const currentProduct =
-      currentOrder?.products?.find((p) => p.id === product.id) || product;
-    const changeRequests = (currentProduct?.changeRequests || []).sort(
+      currentOrder?.products?.find((p) => p.id === modalProduct.id) ||
+      modalProduct;
+
+    // ✅ EARLY GUARD - Prevent render if no valid product
+    if (!currentProduct) {
+      console.warn("No currentProduct found for ViewRequestModal", {
+        orderId: order.id,
+        productId: modalProduct.id,
+      });
+      return null;
+    }
+
+    const changeRequests = (currentProduct.changeRequests || []).sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
     );
 
@@ -1473,12 +1602,18 @@ export default function OrdersManagement2() {
       const action = remarksModal.action;
       const request = changeRequests[requestIndex];
 
+      // ✅ EARLY GUARDS
+      if (!request) {
+        alert("Invalid request");
+        return;
+      }
+
       let updatedOrders = localOrders.map((o) =>
         o.id === order.id
           ? {
               ...o,
               products: o.products.map((p) =>
-                p.id === product.id
+                p.id === currentProduct.id
                   ? {
                       ...p,
                       changeRequests: p.changeRequests.map((req, idx) =>
@@ -1506,17 +1641,18 @@ export default function OrdersManagement2() {
             o.id === order.id
               ? {
                   ...o,
-                  products: o.products.filter((p) => p.id !== product.id),
+                  products: o.products.filter((p) => p.id !== currentProduct.id),
                   invoices: [
                     ...(o.invoices || []),
                     {
                       id: `INV-${Date.now()}`,
-                      productId: product.id,
-                      productName: product.productName,
-                      size: product.size,
-                      invoiceNo: "",
+                      productId: currentProduct.id,
+                      productName:
+                        currentProduct.productName || currentProduct.productName,
+                      size: currentProduct.size || currentProduct.size,
+                      invoiceNo: invoiceNumber,
                       invoiceDate: new Date().toISOString(),
-                      amount: product.budget || 0,
+                      amount: currentProduct.budget || currentProduct.budget || 0,
                       reason: "Product Deleted",
                       remarks: remarks,
                       status: "Draft",
@@ -1525,30 +1661,15 @@ export default function OrdersManagement2() {
                 }
               : o,
           );
-
-          // ✅ UPDATE LOCAL STATE IMMEDIATELY
-          setLocalOrders(updatedOrders);
-
-          // ✅ Save to parent + localStorage
-          setOrders(updatedOrders);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-          window.dispatchEvent(new Event("ordersUpdated"));
-
-          // ✅ OPEN INVOICE CREATION MODAL (parent state)
-          setInvoiceCreateModal({
-            isOpen: true,
-            product,
-            orderId: order.id,
-          });
         } else {
-          // ✅ APPLY CHANGE REQUEST TO PRODUCT
-          const changes = request.requestedChanges;
+          // ✅ APPLY CHANGE REQUEST TO PRODUCT (USE CURRENT PRODUCT)
+          const changes = request.requestedChanges || {};
           updatedOrders = localOrders.map((o) =>
             o.id === order.id
               ? {
                   ...o,
                   products: o.products.map((p) =>
-                    p.id === product.id
+                    p.id === currentProduct.id
                       ? {
                           ...p,
                           orderStatus: "PO Raised & Labels in Process",
@@ -1590,17 +1711,25 @@ export default function OrdersManagement2() {
                 }
               : o,
           );
-
-          // ✅ UPDATE LOCAL STATE IMMEDIATELY
-          setLocalOrders(updatedOrders);
-
-          // ✅ Save to parent
-          setOrders(updatedOrders);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-          window.dispatchEvent(new Event("ordersUpdated"));
         }
+
+        // ✅ UPDATE LOCAL STATE IMMEDIATELY
+        setLocalOrders(updatedOrders);
+
+        // ✅ Save to parent + localStorage
+        setOrders(updatedOrders);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+        window.dispatchEvent(new Event("ordersUpdated"));
+        
+        if (action === "accept") {
+          if (request.type === "delete") {
+            alert("Product deleted!!");
+            setViewRequestModal({isOpen: false, order: null, product: null});
+          }
+        }
+
       } else {
-        // ✅ DECLINE
+        // ✅ DECLINE - Just update status (no product changes)
         setLocalOrders(updatedOrders);
         setOrders(updatedOrders);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
@@ -1609,6 +1738,7 @@ export default function OrdersManagement2() {
 
       // Close remarks
       setRemarksModal({ isOpen: false, requestIndex: -1, action: "" });
+      
       setRemarks("");
     };
 
@@ -1641,7 +1771,8 @@ export default function OrdersManagement2() {
         <div className="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gray-50">
             <h2 className="text-[1.25vw] font-semibold text-gray-800">
-              Change Request History - {product.productName} {product.size}
+              Change Request History - {currentProduct.productName}{" "}
+              {currentProduct.size}
             </h2>
             <button
               onClick={() =>
@@ -1708,45 +1839,50 @@ export default function OrdersManagement2() {
                           <div className="grid grid-cols-2 gap-4 text-[.8vw]">
                             <div>
                               <p>
-                                <strong>Product:</strong> {product.productName}{" "}
-                                {product.size}
+                                <strong>Product:</strong>{" "}
+                                {currentProduct.productName}{" "}
+                                {currentProduct.size}
                               </p>
                               <p>
-                                <strong>IML Name:</strong> {product.imlName}
+                                <strong>IML Name:</strong>{" "}
+                                {currentProduct.imlName}
                               </p>
                               <p>
-                                <strong>IML Type:</strong> {product.imlType}
+                                <strong>IML Type:</strong>{" "}
+                                {currentProduct.imlType}
                               </p>
                             </div>
                             <div>
                               <p>
-                                <strong>LID Color:</strong> {product.lidColor}
+                                <strong>LID Color:</strong>{" "}
+                                {currentProduct.lidColor}
                               </p>
                               <p>
-                                <strong>TUB Color:</strong> {product.tubColor}
+                                <strong>TUB Color:</strong>{" "}
+                                {currentProduct.tubColor}
                               </p>
 
-                              {product.imlType === "LID" && (
+                              {currentProduct.imlType === "LID" && (
                                 <p>
                                   <strong>LID Label Qty:</strong>{" "}
-                                  {product.lidLabelQty || "N/A"}
+                                  {currentProduct.lidLabelQty || "N/A"}
                                 </p>
                               )}
-                              {product.imlType === "TUB" && (
+                              {currentProduct.imlType === "TUB" && (
                                 <p>
                                   <strong>TUB Label Qty:</strong>{" "}
-                                  {product.tubLabelQty || "N/A"}
+                                  {currentProduct.tubLabelQty || "N/A"}
                                 </p>
                               )}
-                              {product.imlType === "LID & TUB" && (
+                              {currentProduct.imlType === "LID & TUB" && (
                                 <>
                                   <p>
                                     <strong>LID Label Qty:</strong>{" "}
-                                    {product.lidLabelQty || "N/A"}
+                                    {currentProduct.lidLabelQty || "N/A"}
                                   </p>
                                   <p>
                                     <strong>TUB Label Qty:</strong>{" "}
-                                    {product.tubLabelQty || "N/A"}
+                                    {currentProduct.tubLabelQty || "N/A"}
                                   </p>
                                 </>
                               )}
@@ -1769,19 +1905,19 @@ export default function OrdersManagement2() {
                           <div className="space-y-1 text-sm">
                             <p>
                               <strong>IML Name:</strong>{" "}
-                              {request.originalDetails.imlName}
+                              {request.originalDetails?.imlName}
                             </p>
                             <p>
                               <strong>LID Color:</strong>{" "}
-                              {request.originalDetails.lidColor}
+                              {request.originalDetails?.lidColor}
                             </p>
                             <p>
                               <strong>TUB Color:</strong>{" "}
-                              {request.originalDetails.tubColor}
+                              {request.originalDetails?.tubColor}
                             </p>
                             <p>
                               <strong>IML Type:</strong>{" "}
-                              {request.originalDetails.imlType}
+                              {request.originalDetails?.imlType}
                             </p>
                           </div>
                         </div>
@@ -1807,7 +1943,7 @@ export default function OrdersManagement2() {
                     {request.status === "ACCEPTED" &&
                       request.type === "delete" &&
                       currentOrder.invoices?.some(
-                        (inv) => inv.productId === product.id,
+                        (inv) => inv.productId === currentProduct.id,
                       ) && (
                         <div className="mt-3 p-3 bg-blue-50 border rounded">
                           <button
@@ -1891,6 +2027,7 @@ export default function OrdersManagement2() {
                   ×
                 </button>
               </div>
+              {/* remarks field */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Remarks <span className="text-red-500">*</span>
@@ -1903,6 +2040,23 @@ export default function OrdersManagement2() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
                 />
               </div>
+
+              {/* ✅ INVOICE NUMBER - ONLY FOR DELETE + ACCEPT */}
+              {remarksModal.action === "accept" && changeRequests[remarksModal.requestIndex]?.type === "delete" && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Invoice Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder="Enter invoice number (e.g., INV-2026-001)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <button
                   onClick={() =>
@@ -2367,21 +2521,58 @@ export default function OrdersManagement2() {
   };
 
   // ✅ Add this function in your main component (with other handlers)
+  // const handleSaveEstimateRevision = (revision, localRevisedEstimate) => {
+  //   // Store in order.estimateRevisions array
+  //   const updatedOrders = orders.map((o) =>
+  //     o.id === revision.orderId
+  //       ? {
+  //           ...o,
+  //           estimateRevisions: [
+  //             ...(o.estimateRevisions || []),
+  //             {
+  //               ...localRevisedEstimate,
+  //               triggeredByProduct: revision.productDetails,
+  //               originalEstimate: revision.originalEstimate,
+  //               timestamp: new Date().toISOString(),
+  //             },
+  //           ],
+  //         }
+  //       : o,
+  //   );
+
+  //   setOrders(updatedOrders);
+  //   localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+  //   window.dispatchEvent(new Event("ordersUpdated"));
+  //   setEstimateRevisionModal({ isOpen: false, revision: null });
+  // };
   const handleSaveEstimateRevision = (revision, localRevisedEstimate) => {
-    // Store in order.estimateRevisions array
+    const now = new Date().toISOString();
+    const order = orders.find((o) => o.id === revision.orderId);
+    const product = order.products.find((p) => p.id === revision.productId);
+
+    // 1. Add change request to product
+    const changeRequest = {
+      ...tempChangeRequest,
+      revisedEstimate: localRevisedEstimate, // Link them
+    };
+
+    // 2. Persist change request + revised estimate
     const updatedOrders = orders.map((o) =>
       o.id === revision.orderId
         ? {
             ...o,
-            estimateRevisions: [
-              ...(o.estimateRevisions || []),
-              {
-                ...localRevisedEstimate,
-                triggeredByProduct: revision.productDetails,
-                originalEstimate: revision.originalEstimate,
-                timestamp: new Date().toISOString(),
-              },
-            ],
+            orderEstimate: { ...o.orderEstimate, ...localRevisedEstimate }, // Update estimate
+            products: o.products.map((p) =>
+              p.id === revision.productId
+                ? {
+                    ...p,
+                    changeRequests: [
+                      ...(p.changeRequests || []),
+                      changeRequest,
+                    ],
+                  }
+                : p,
+            ),
           }
         : o,
     );
@@ -2389,6 +2580,7 @@ export default function OrdersManagement2() {
     setOrders(updatedOrders);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
     window.dispatchEvent(new Event("ordersUpdated"));
+    setTempChangeRequest(null); // Clear temp
     setEstimateRevisionModal({ isOpen: false, revision: null });
   };
 
@@ -2406,8 +2598,8 @@ export default function OrdersManagement2() {
     useEffect(() => {
       if (revision?.originalEstimate) {
         setLocalRevisedEstimate({
-          estimatedNumber: revision.originalEstimate.estimatedNumber || "",
-          estimatedValue: revision.originalEstimate.estimatedValue || "",
+          estimatedNumber: 0,
+          estimatedValue: 0,
         });
       }
     }, [revision]);
@@ -2415,10 +2607,14 @@ export default function OrdersManagement2() {
     // ✅ PASS DATA UP - Don't save here
     const handleSaveClick = () => {
       if (
-        !localRevisedEstimate.estimatedNumber ||
-        !localRevisedEstimate.estimatedValue
-      )
+        !localRevisedEstimate.estimatedNumber?.trim() ||
+        !localRevisedEstimate.estimatedValue?.trim()
+      ) {
+        alert(
+          "Revised estimated no & value are required to submit change request.",
+        );
         return;
+      }
 
       // Call parent handler with data
       handleSaveEstimateRevision(revision, localRevisedEstimate);
@@ -2441,7 +2637,7 @@ export default function OrdersManagement2() {
           </div>
 
           {/* Order Info */}
-          <div className="space-y-4 mb-6">
+          <div className="space-y-4 mb-6 max-h-[50vh] overflow-y-auto">
             <Input
               label="Company Name"
               value={order?.contact.company || ""}
@@ -2468,6 +2664,18 @@ export default function OrdersManagement2() {
               value={order?.orderNumber || ""}
               disabled={true}
             />
+            <Input
+              label="Original Estimated Number"
+              value={order.orderEstimate?.estimatedNumber || ""}
+              disabled={true}
+            />
+            <Input
+              label="Original Estimated Value"
+              value={
+                order.orderEstimate?.estimatedValue?.toLocaleString() || ""
+              }
+              disabled={true}
+            />
           </div>
 
           {/* Editable Fields */}
@@ -2475,6 +2683,7 @@ export default function OrdersManagement2() {
             <Input
               label="Revised Estimated Number"
               value={localRevisedEstimate.estimatedNumber}
+              type="number"
               onChange={(e) =>
                 setLocalRevisedEstimate({
                   ...localRevisedEstimate,
@@ -2486,6 +2695,7 @@ export default function OrdersManagement2() {
             <Input
               label="Revised Estimated Value"
               value={localRevisedEstimate.estimatedValue}
+              type="number"
               onChange={(e) =>
                 setLocalRevisedEstimate({
                   ...localRevisedEstimate,
@@ -4871,6 +5081,16 @@ export default function OrdersManagement2() {
                                         {order.products?.length || 0}
                                       </span>
                                     </div>
+                                    <div className="flex gap-6 mt-2 text-[.9vw] text-gray-600">
+                                      <span>
+                                        <strong>Esimated No.:</strong>{" "}
+                                        {order.orderEstimate?.estimatedNumber}
+                                      </span>
+                                      <span>
+                                        <strong>Esimated Value:</strong>{" "}
+                                        {order.orderEstimate?.estimatedValue}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
 
@@ -5249,6 +5469,22 @@ export default function OrdersManagement2() {
                                                                   className="px-[.75vw] py-[0.4vw] cursor-pointer bg-orange-600 text-white rounded hover:bg-orange-700 text-[.75vw] font-medium transition-all w-full whitespace-pre"
                                                                 >
                                                                   Change request
+                                                                </button>
+                                                              </>
+                                                            )}
+                                                          {product.orderStatus ===
+                                                            "Artwork Pending" || product.orderStatus === "Artwork Approved" && (
+                                                              <>
+                                                                <button
+                                                                  onClick={() =>
+                                                                    handleChangeRequest(
+                                                                      order,
+                                                                      product,
+                                                                    )
+                                                                  }
+                                                                  className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.75vw] font-medium transition-all whitespace-pre"
+                                                                >
+                                                                  Edit
                                                                 </button>
                                                               </>
                                                             )}
