@@ -1,7 +1,21 @@
 import { useState, useRef, useEffect } from "react";
+import { useCallback } from "react"; // Add this import at top
 import { useNavigate } from "react-router-dom";
 import NewOrder from "./NewOrder";
 import FileUploadBox from "./modals/FileUploadBox";
+import * as pdfjsLib from "pdfjs-dist";
+import InvoiceTable from './modals/InvoiceTable';
+import DeletedRequestsTable from "./modals/DeletedRequestsTable ";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
+const OLDDESIGNFILES = [
+  { id: 1, name: "Design 1", path: "/assets/pdf/design1.pdf", type: "pdf" },
+  { id: 2, name: "Design 2", path: "/assets/pdf/design2.pdf", type: "pdf" },
+  { id: 3, name: "Design 3", path: "/assets/pdf/design3.pdf", type: "pdf" },
+];
 
 // Mock data storage (In production, this would be an API/Database)
 const DATA_VERSION = "3.0"; // Increment this when structure changes
@@ -20,6 +34,19 @@ export default function OrdersManagement2() {
   const [selectedSize, setSelectedSize] = useState("");
   const [expandedCompanies, setExpandedCompanies] = useState({});
   const [expandedOrders, setExpandedOrders] = useState({});
+  const [isFromSuggestion, setIsFromSuggestion] = useState(false);
+  const [pdfPreviews, setPdfPreviews] = useState({});
+  const [allInvoicesTab, setAllInvoicesTab] = useState('active'); // 'active' | 'deleted'
+const [allInvoicesModal, setAllInvoicesModal] = useState({ isOpen: false, invoices: [] });
+
+// 🔥 ADD THESE STATES (after other modal states)
+const [productDeleteConfirm, setProductDeleteConfirm] = useState({
+  isOpen: false,
+  orderId: null,
+  productId: null,
+  productName: ""
+});
+
   const navigate = useNavigate();
 
   const [viewMode, setViewMode] = useState("all"); // "all" or "remaining"
@@ -134,6 +161,48 @@ export default function OrdersManagement2() {
     "yellow",
     "pink",
   ];
+
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  };
+
+  const [products, setProducts] = useState([
+    {
+      id: 1,
+      productName: "",
+      size: "",
+      imlName: "",
+      lidColor: "transparent",
+      tubColor: "white",
+      imlType: "LID",
+      // LID quantities
+      lidLabelQty: "",
+      lidProductionQty: "",
+      lidStock: 0,
+      // TUB quantities
+      tubLabelQty: "",
+      tubProductionQty: "",
+      tubStock: 0,
+      budget: 0,
+      // LID design
+      lidDesignFile: null,
+      lidSelectedOldDesign: null,
+      // TUB design
+      tubDesignFile: null,
+      tubSelectedOldDesign: null,
+      approvedDate: getTodayDate(),
+      designSharedMail: false,
+      designStatus: "approved",
+      orderStatus: "Artwork Approved",
+      showLidColorPicker: false,
+      showTubColorPicker: false,
+      designType: "new",
+      moveToPurchase: false,
+      singleImlDesign: false,
+      isCollapsed: false,
+    },
+  ]);
 
   const IML_TYPE_MAP = {
     // Rectangle (all sizes)
@@ -750,7 +819,19 @@ export default function OrdersManagement2() {
     });
   };
 
+  const handleEditRequest = (order, product) => {
+    sessionStorage.setItem("isEditMode", "true"); // 🔥 FORCE REQUEST MODE
+
+    setChangeRequestModal({
+      isOpen: true,
+      order,
+      product: { ...product }, // Snapshot current product details
+    });
+  };
+
   const handleChangeRequest = (order, product) => {
+    sessionStorage.setItem("isEditMode", "false"); // 🔥 FORCE REQUEST MODE
+
     setChangeRequestModal({
       isOpen: true,
       order,
@@ -930,14 +1011,52 @@ export default function OrdersManagement2() {
   //   });
   // };
 
+  const updateProduct = useCallback((id, field, value) => {
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
+    );
+  }, []);
+
+  // Add this new function after updateProduct
+  const updateProductWithDesignStatus = useCallback((id, field, value) => {
+    setProducts((prevProducts) => {
+      const newProducts = prevProducts.map((p) => {
+        if (p.id === id) {
+          const updates = { [field]: value };
+
+          // ✅ If selecting an existing design, auto-approve
+          if (
+            (field === "lidSelectedOldDesign" ||
+              field === "tubSelectedOldDesign") &&
+            value
+          ) {
+            updates.designStatus = "approved";
+            updates.orderStatus = "Artwork Approved";
+            updates.approvedDate = getTodayDate();
+          }
+
+          return { ...p, ...updates };
+        }
+        return p;
+      });
+
+      // ✅ DEBUG: Log the UPDATED product to verify state change
+      const updatedProduct = newProducts.find((p) => p.id === id);
+      console.log("Updated Product:", updatedProduct);
+      console.log(`Field ${field} set to:`, value);
+
+      return newProducts;
+    });
+  }, []);
+
   // handle move to production
 
   const handleSubmitRequest = (localProduct) => {
-    // ✅ Pass localProduct as param
+    const isEditMode = sessionStorage.getItem("isEditMode") === "true";
     const now = new Date().toISOString();
     const originalProduct = changeRequestModal.product;
 
-    // ✅ CAPTURE CHANGES - Compare original vs edited
+    // ✅ CAPTURE CHANGES (SAME LOGIC - works for BOTH modes)
     const requestedChanges = {
       productName:
         localProduct.productName !== originalProduct.productName
@@ -979,15 +1098,47 @@ export default function OrdersManagement2() {
         localProduct.tubProductionQty !== originalProduct.tubProductionQty
           ? localProduct.tubProductionQty
           : undefined,
-      // Add more fields as needed
+      lidDesignFile:
+        localProduct.lidDesignFile !== originalProduct.lidDesignFile ||
+        (localProduct.lidDesignFile &&
+          localProduct.lidDesignFile.name !==
+            originalProduct.lidDesignFile?.name)
+          ? {
+              name: localProduct.lidDesignFile?.name || "NEW_FILE",
+              size: localProduct.lidDesignFile?.size || 0,
+              type: localProduct.lidDesignFile?.type || "file",
+            }
+          : undefined,
+
+      tubDesignFile:
+        localProduct.tubDesignFile !== originalProduct.tubDesignFile ||
+        (localProduct.tubDesignFile &&
+          localProduct.tubDesignFile.name !==
+            originalProduct.tubDesignFile?.name)
+          ? {
+              name: localProduct.tubDesignFile?.name || "NEW_FILE",
+              size: localProduct.tubDesignFile?.size || 0,
+              type: localProduct.tubDesignFile?.type || "file",
+            }
+          : undefined,
+
+      lidSelectedOldDesign:
+        localProduct.lidSelectedOldDesign !==
+        originalProduct.lidSelectedOldDesign
+          ? localProduct.lidSelectedOldDesign
+          : undefined,
+      tubSelectedOldDesign:
+        localProduct.tubSelectedOldDesign !==
+        originalProduct.tubSelectedOldDesign
+          ? localProduct.tubSelectedOldDesign
+          : undefined,
     };
 
-    // ✅ Remove undefined values (clean object)
     const cleanRequestedChanges = Object.fromEntries(
       Object.entries(requestedChanges).filter(([_, v]) => v !== undefined),
     );
 
-    // 🚫 TEMP ONLY - DON'T PERSIST YET (same as delete)
+    // 🔥 NEW: Pass localProduct + mode to Estimate Modal
     setTempChangeRequest({
       type: "change",
       timestamp: now,
@@ -996,11 +1147,13 @@ export default function OrdersManagement2() {
       productDetails: { ...originalProduct },
       requestedChanges: cleanRequestedChanges,
       originalEstimate: changeRequestModal.order.orderEstimate,
+      localProductChanges: localProduct, // ✅ FULL edited product
+      isEditMode: isEditMode, // 🔥 MODE FLAG
     });
 
-    handleCloseChangeRequest(); // Close WITHOUT persisting
+    handleCloseChangeRequest();
 
-    // ✅ Open estimate modal (same as before)
+    // ✅ ALWAYS open estimate modal (for BOTH modes)
     setEstimateRevisionModal({
       isOpen: true,
       revision: {
@@ -1013,6 +1166,7 @@ export default function OrdersManagement2() {
         triggerType: "submit",
         timestamp: now,
         originalEstimate: changeRequestModal.order.orderEstimate,
+        isEditMode: isEditMode, // 🔥 PASS MODE TO MODAL
       },
     });
   };
@@ -1080,7 +1234,7 @@ export default function OrdersManagement2() {
     if (!previewModal.isOpen) return null;
 
     return (
-      <div className="fixed inset-0 bg-[#000000ad] bg-opacity-70 z-50000 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-[#000000ad] bg-opacity-70 z-5000000 flex items-center justify-center p-4">
         <div
           ref={previewModalRef}
           onMouseDown={(e) => e.stopPropagation()}
@@ -1159,6 +1313,151 @@ export default function OrdersManagement2() {
 
     const { product } = changeRequestModal;
     const [localProduct, setLocalProduct] = useState({ ...product });
+    const [pdfPreviews, setPdfPreviews] = useState({});
+
+    const updateProductWithDesignStatus = useCallback((id, field, value) => {
+      setLocalProduct((prev) => {
+        const newProducts = prev; // Single product
+        const updates = { [field]: value };
+
+        // Auto-approve existing designs
+        if (
+          field === "lidSelectedOldDesign" ||
+          field === "tubSelectedOldDesign"
+        ) {
+          updates.designStatus = "approved";
+          updates.orderStatus = "Artwork Approved";
+          updates.approvedDate = getTodayDate();
+        }
+
+        console.log("Updated field:", field, "to:", value);
+        return { ...newProducts, ...updates };
+      });
+    }, []);
+
+    const generatePdfThumbnail = async (file, previewId) => {
+      try {
+        const fileReader = new FileReader();
+
+        fileReader.onload = async function () {
+          try {
+            const typedArray = new Uint8Array(this.result);
+            const loadingTask = pdfjsLib.getDocument({
+              data: typedArray,
+              cMapUrl:
+                "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+              cMapPacked: true,
+            });
+
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+            const scale = 1.5;
+            const viewport = page.getViewport({ scale });
+
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+            };
+
+            await page.render(renderContext).promise;
+            const thumbnailUrl = canvas.toDataURL("image/png");
+
+            setPdfPreviews((prev) => ({
+              ...prev,
+              [previewId]: thumbnailUrl,
+            }));
+          } catch (error) {
+            console.error("Error rendering PDF:", error);
+            setPdfPreviews((prev) => ({
+              ...prev,
+              [previewId]: "error",
+            }));
+          }
+        };
+
+        fileReader.onerror = function (error) {
+          console.error("FileReader error:", error);
+        };
+
+        fileReader.readAsArrayBuffer(file);
+      } catch (error) {
+        console.error("Error generating PDF thumbnail:", error);
+      }
+    };
+
+    const generatePdfThumbnailFromUrl = async (pdfUrl, previewId) => {
+      try {
+        const response = await fetch(pdfUrl);
+        const blob = await response.blob();
+
+        const fileReader = new FileReader();
+
+        fileReader.onload = async function () {
+          try {
+            const typedArray = new Uint8Array(this.result);
+            const loadingTask = pdfjsLib.getDocument({
+              data: typedArray,
+              cMapUrl:
+                "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+              cMapPacked: true,
+            });
+
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+            const scale = 1.5;
+            const viewport = page.getViewport({ scale });
+
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d");
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport,
+            };
+
+            await page.render(renderContext).promise;
+            const thumbnailUrl = canvas.toDataURL("image/png");
+
+            setPdfPreviews((prev) => ({
+              ...prev,
+              [previewId]: thumbnailUrl,
+            }));
+          } catch (error) {
+            console.error("Error rendering PDF:", error);
+            setPdfPreviews((prev) => ({
+              ...prev,
+              [previewId]: "error",
+            }));
+          }
+        };
+
+        fileReader.onerror = function (error) {
+          console.error("FileReader error:", error);
+        };
+
+        fileReader.readAsArrayBuffer(blob);
+      } catch (error) {
+        console.error("Error fetching PDF:", error);
+      }
+    };
+
+    useEffect(() => {
+      const pdfDesigns = OLDDESIGNFILES.filter(
+        (design) => design.type === "pdf",
+      );
+      pdfDesigns.forEach((design) => {
+        if (!pdfPreviews[`old-${design.id}`]) {
+          generatePdfThumbnailFromUrl(design.path, `old-${design.id}`);
+        }
+      });
+    }, []);
 
     // Reset local state when product changes
     useEffect(() => {
@@ -1504,6 +1803,822 @@ export default function OrdersManagement2() {
                 </div>
               </div>
             )}
+
+            <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-[0.6vw] border-2 border-purple-200 p-[1vw] mb-[0] relative">
+              {/* Design Type Toggle - Conditional Display */}
+              <div className="flex justify-end gap-[0.8vw] mb-[1vw] absolute top-[1vw] right-[1vw]">
+                {isFromSuggestion && (
+                  <button
+                    onClick={() => {
+                      updateProduct(product.id, "designType", "existing");
+                      updateProduct(product.id, "lidDesignFile", null);
+                      updateProduct(product.id, "tubDesignFile", null);
+                    }}
+                    className={`px-[2vw] py-[0.6vw] rounded-[0.4vw] cursor-pointer text-[0.85vw] font-medium transition-all duration-200 ${
+                      product.designType === "existing"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
+                  >
+                    Existing Design
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    updateProduct(product.id, "designType", "new");
+                    updateProduct(product.id, "lidSelectedOldDesign", null);
+                    updateProduct(product.id, "tubSelectedOldDesign", null);
+                    updateProduct(product.id, "lidDesignFile", null);
+                    updateProduct(product.id, "tubDesignFile", null);
+                  }}
+                  className={`px-[2vw] py-[0.6vw] rounded-[0.4vw] cursor-pointer text-[0.85vw] font-medium transition-all duration-200 ${
+                    product.designType === "new"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  New Design
+                </button>
+              </div>
+              <h3 className="text-[1vw] font-semibold text-purple-900 mb-[1vw]">
+                Design Selection
+              </h3>
+
+              {/* {product.imlType === "LID & TUB" && (
+                <label className="flex items-center gap-[0.6vw] mb-[1vw] font-medium text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={product.singleImlDesign || false}
+                    onChange={(e) =>
+                      updateProduct(
+                        product.id,
+                        "singleImlDesign",
+                        e.target.checked,
+                      )
+                    }
+                    className="w-[1.1vw] h-[1.1vw]"
+                  />
+                  <span>Select Single IML Design for LID & TUB</span>
+                </label>
+              )} */}
+
+              {product.designType === "existing" ? (
+                <div>
+                  {/* For LID & TUB - Show two separate design selections */}
+
+                  {product.imlType === "LID & TUB" ? (
+                    <div className="space-y-1.5vw">
+                      {/* LID Design Selection */}
+                      <div className="grid grid-cols-2 gap-[1vw]">
+                        <div>
+                          <div>
+                            <label className="block text-[0.9vw] font-medium text-purple-700 mb-[0.75vw]">
+                              Select LID Design{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <div className="border-2 border-dashed border-purple-300 rounded-[0.6vw] p-[1vw] bg-white">
+                              <div className="grid grid-cols-3 gap-[1.5vw]">
+                                {OLD_DESIGN_FILES.map((file) => (
+                                  <div
+                                    key={file.id}
+                                    className="text-center"
+                                    onClick={() =>
+                                      updateProductWithDesignStatus(
+                                        product.id,
+                                        "lidSelectedOldDesign",
+                                        file.id,
+                                      )
+                                    }
+                                  >
+                                    <div
+                                      className={`w-[6vw] h-[6vw] mx-auto bg-gray-100 rounded-[0.6vw] flex items-center justify-center text-[3vw] mb-[0.8vw] border-2 ${
+                                        product.lidSelectedOldDesign === file.id
+                                          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-300"
+                                          : "border-gray-300"
+                                      } overflow-hidden cursor-pointer hover:border-blue-400 transition-all`}
+                                    >
+                                      {file.type === "pdf" ? (
+                                        pdfPreviews[`old-${file.id}`] ? (
+                                          <img
+                                            src={pdfPreviews[`old-${file.id}`]}
+                                            alt={file.name}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="flex flex-col items-center">
+                                            <svg
+                                              className="w-[3vw] h-[3vw] text-red-500"
+                                              fill="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                                              <path
+                                                d="M14 2v6h6M10 13h4m-4 4h4"
+                                                stroke="white"
+                                                strokeWidth="1"
+                                              />
+                                            </svg>
+                                            <span className="text-[0.6vw] text-gray-500 mt-1">
+                                              Loading...
+                                            </span>
+                                          </div>
+                                        )
+                                      ) : (
+                                        <img
+                                          src={file.path}
+                                          alt={file.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      )}
+                                    </div>
+                                    <label className="flex items-center justify-center gap-[0.4vw] text-[0.75vw] text-gray-500 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`lid-design-${product.id}`}
+                                        checked={
+                                          product.lidSelectedOldDesign ===
+                                          file.id
+                                        }
+                                        onChange={() =>
+                                          updateProductWithDesignStatus(
+                                            product.id,
+                                            "lidSelectedOldDesign",
+                                            file.id,
+                                          )
+                                        }
+                                        onClick={(e) => {
+                                          if (
+                                            file.type === "pdf" &&
+                                            !pdfPreviews[`old-${file.id}`]
+                                          ) {
+                                            generatePdfThumbnailFromUrl(
+                                              file.path,
+                                              `old-${file.id}`,
+                                            );
+                                          }
+                                        }}
+                                        className="w-[0.9vw] h-[0.9vw] cursor-pointer"
+                                      />
+                                      <span className="text-[0.75vw] font-medium">
+                                        {file.name}
+                                      </span>
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="">
+                          {/* LID Design Preview */}
+                          {product.lidSelectedOldDesign && (
+                            <div className="h-[85.5%]">
+                              <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
+                                LID Design Preview
+                              </label>
+                              <div className="border-2 relative border-blue-300 rounded-[0.6vw] p-1vw bg-blue-50 flex items-center justify-center h-full">
+                                {(() => {
+                                  const selectedFile = OLD_DESIGN_FILES.find(
+                                    (f) =>
+                                      f.id === product.lidSelectedOldDesign,
+                                  );
+                                  return (
+                                    <div className="text-center w-full">
+                                      <div className="w-full h-auto max-h-[12vw] mx-auto rounded-[0.6vw] flex items-center justify-center mb-[1vw] overflow-hidden">
+                                        {selectedFile.type === "pdf" ? (
+                                          pdfPreviews[
+                                            `old-${selectedFile.id}`
+                                          ] ? (
+                                            <img
+                                              src={
+                                                pdfPreviews[
+                                                  `old-${selectedFile.id}`
+                                                ]
+                                              }
+                                              alt={selectedFile.name}
+                                              className="w-full h-auto max-h-[4.5vw] object-contain"
+                                            />
+                                          ) : (
+                                            <div className="flex flex-col items-center py-4">
+                                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                                              <p className="text-gray-500 text-[0.8vw]">
+                                                Loading PDF preview...
+                                              </p>
+                                            </div>
+                                          )
+                                        ) : (
+                                          <img
+                                            src={selectedFile.path}
+                                            alt={selectedFile.name}
+                                            className="w-full h-auto max-h-[12vw] object-contain"
+                                          />
+                                        )}
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          setPreviewModal({
+                                            isOpen: true,
+                                            type: selectedFile.type,
+                                            path: selectedFile.path,
+                                            name: selectedFile.name,
+                                          });
+                                        }}
+                                        className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded-[0.4vw] hover:bg-blue-700 font-medium text-[0.75vw] transition-all duration-200"
+                                      >
+                                        Preview Full
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* TUB Design Selection - Optional */}
+                      {!product.singleImlDesign && (
+                        <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
+                          <div>
+                            <label className="block text-[0.9vw] font-medium text-purple-700 mb-[0.75vw]">
+                              Select TUB Design{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <div className="border-2 border-dashed border-purple-300 rounded-[0.6vw] p-[1vw] bg-white">
+                              <div className="grid grid-cols-3 gap-[1.5vw]">
+                                {OLD_DESIGN_FILES.map((file) => (
+                                  <div
+                                    key={file.id}
+                                    className="text-center"
+                                    onClick={() =>
+                                      updateProductWithDesignStatus(
+                                        product.id,
+                                        "tubSelectedOldDesign",
+                                        file.id,
+                                      )
+                                    }
+                                  >
+                                    <div
+                                      className={`w-[6vw] h-[6vw] mx-auto bg-gray-100 rounded-[0.6vw] flex items-center justify-center text-[3vw] mb-[0.8vw] border-2 ${
+                                        product.tubSelectedOldDesign === file.id
+                                          ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300"
+                                          : "border-gray-300"
+                                      } overflow-hidden cursor-pointer hover:border-purple-400 transition-all`}
+                                    >
+                                      {file.type === "pdf" ? (
+                                        pdfPreviews[`old-${file.id}`] ? (
+                                          <img
+                                            src={pdfPreviews[`old-${file.id}`]}
+                                            alt={file.name}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="flex flex-col items-center">
+                                            <svg
+                                              className="w-[3vw] h-[3vw] text-red-500"
+                                              fill="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                                              <path
+                                                d="M14 2v6h6M10 13h4m-4 4h4"
+                                                stroke="white"
+                                                strokeWidth="1"
+                                              />
+                                            </svg>
+                                            <span className="text-[0.6vw] text-gray-500 mt-1">
+                                              Loading...
+                                            </span>
+                                          </div>
+                                        )
+                                      ) : (
+                                        <img
+                                          src={file.path}
+                                          alt={file.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      )}
+                                    </div>
+                                    <label className="flex items-center justify-center gap-[0.4vw] text-[0.75vw] text-gray-500 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`tub-design-${product.id}`}
+                                        checked={
+                                          product.tubSelectedOldDesign ===
+                                          file.id
+                                        }
+                                        onChange={() =>
+                                          updateProduct(
+                                            product.id,
+                                            "tubSelectedOldDesign",
+                                            file.id,
+                                          )
+                                        }
+                                        onClick={(e) => {
+                                          if (
+                                            file.type === "pdf" &&
+                                            !pdfPreviews[`old-${file.id}`]
+                                          ) {
+                                            generatePdfThumbnailFromUrl(
+                                              file.path,
+                                              `old-${file.id}`,
+                                            );
+                                          }
+                                        }}
+                                        className="w-[0.9vw] h-[0.9vw] cursor-pointer"
+                                      />
+                                      <span className="text-[0.75vw] font-medium">
+                                        {file.name}
+                                      </span>
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="h-full">
+                            {/* TUB Design Preview */}
+                            {product.tubSelectedOldDesign && (
+                              <div className="h-full">
+                                <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.75vw]">
+                                  TUB Design Preview
+                                </label>
+                                <div className="border-2 relative border-purple-300 rounded-[0.6vw] p-[1vw] bg-purple-50 flex items-center justify-center h-[84%]">
+                                  {(() => {
+                                    const selectedFile = OLD_DESIGN_FILES.find(
+                                      (f) =>
+                                        f.id === product.tubSelectedOldDesign,
+                                    );
+                                    return (
+                                      <div className="text-center w-full h-full">
+                                        <div className="w-full h-auto max-h-[12vw] mx-auto rounded-[0.6vw] flex items-center justify-center mb-[1vw] overflow-hidden">
+                                          {selectedFile.type === "pdf" ? (
+                                            pdfPreviews[
+                                              `old-${selectedFile.id}`
+                                            ] ? (
+                                              <img
+                                                src={
+                                                  pdfPreviews[
+                                                    `old-${selectedFile.id}`
+                                                  ]
+                                                }
+                                                alt={selectedFile.name}
+                                                className="w-full h-auto max-h-[4.5vw] object-contain"
+                                              />
+                                            ) : (
+                                              <div className="flex flex-col items-center py-4">
+                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
+                                                <p className="text-gray-500 text-[0.8vw]">
+                                                  Loading PDF preview...
+                                                </p>
+                                              </div>
+                                            )
+                                          ) : (
+                                            <img
+                                              src={selectedFile.path}
+                                              alt={selectedFile.name}
+                                              className="w-full h-auto max-h-[12vw] object-contain"
+                                            />
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            setPreviewModal({
+                                              isOpen: true,
+                                              type: selectedFile.type,
+                                              path: selectedFile.path,
+                                              name: selectedFile.name,
+                                            });
+                                          }}
+                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
+                                        >
+                                          Preview Full
+                                        </button>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Single Design Selection for LID or TUB only */
+                    <div className="grid grid-cols-2 gap-[1vw]">
+                      <div>
+                        <label className="block text-[0.9vw] font-medium text-purple-700 mb-[0.75vw]">
+                          Select Design <span className="text-red-500">*</span>
+                        </label>
+                        <div className="border-2 border-dashed border-purple-300 rounded-[0.6vw] p-[1vw] bg-white">
+                          <div className="grid grid-cols-3 gap-[1.5vw]">
+                            {OLD_DESIGN_FILES.map((file) => (
+                              <div
+                                key={file.id}
+                                className="text-center"
+                                onClick={() =>
+                                  updateProductWithDesignStatus(
+                                    product.id,
+                                    "lidSelectedOldDesign",
+                                    file.id,
+                                  )
+                                }
+                              >
+                                <div
+                                  className={`w-[6vw] h-[6vw] mx-auto bg-gray-100 rounded-[0.6vw] flex items-center justify-center text-[3vw] mb-[0.8vw] border-2 ${
+                                    product.lidSelectedOldDesign === file.id
+                                      ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300"
+                                      : "border-gray-300"
+                                  } overflow-hidden cursor-pointer hover:border-purple-400 transition-all`}
+                                >
+                                  {/* Image/PDF Preview */}
+                                  {file.type === "pdf" ? (
+                                    pdfPreviews[`old-${file.id}`] ? (
+                                      <img
+                                        src={pdfPreviews[`old-${file.id}`]}
+                                        alt={file.name}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex flex-col items-center">
+                                        <svg
+                                          className="w-[3vw] h-[3vw] text-red-500"
+                                          fill="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                                          <path
+                                            d="M14 2v6h6M10 13h4m-4 4h4"
+                                            stroke="white"
+                                            strokeWidth="1"
+                                          />
+                                        </svg>
+                                        <span className="text-[0.6vw] text-gray-500 mt-1">
+                                          Loading...
+                                        </span>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <img
+                                      src={file.path}
+                                      alt={file.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  )}
+                                </div>
+                                <label className="flex items-center justify-center gap-[0.4vw] text-[0.75vw] text-gray-500 cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`design-${product.id}`}
+                                    checked={
+                                      product.lidSelectedOldDesign === file.id
+                                    }
+                                    onChange={() =>
+                                      updateProductWithDesignStatus(
+                                        product.id,
+                                        "lidSelectedOldDesign",
+                                        file.id,
+                                      )
+                                    }
+                                    onClick={(e) => {
+                                      if (
+                                        file.type === "pdf" &&
+                                        !pdfPreviews[`old-${file.id}`]
+                                      ) {
+                                        generatePdfThumbnailFromUrl(
+                                          file.path,
+                                          `old-${file.id}`,
+                                        );
+                                      }
+                                    }}
+                                    className="w-[0.9vw] h-[0.9vw] cursor-pointer"
+                                  />
+                                  <span className="text-[0.75vw] font-medium">
+                                    {file.name}
+                                  </span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        {/* Design Preview */}
+                        {product.lidSelectedOldDesign && (
+                          <div>
+                            <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
+                              Selected Design Preview
+                            </label>
+                            <div className="border-2 relative border-purple-300 rounded-[0.6vw] p-[1vw] bg-purple-50 flex items-center justify-center">
+                              {(() => {
+                                const selectedFile = OLD_DESIGN_FILES.find(
+                                  (f) => f.id === product.lidSelectedOldDesign,
+                                );
+                                if (!selectedFile) return null;
+
+                                return (
+                                  <div className="text-center w-full">
+                                    <div className="w-full h-auto min-h-[12.15vh] max-h-[12.15vh] mx-auto rounded-[0.6vw] flex items-center justify-center mb-[1vw] overflow-hidden">
+                                      {selectedFile.type === "pdf" ? (
+                                        pdfPreviews[
+                                          `old-${selectedFile.id}`
+                                        ] ? (
+                                          <img
+                                            src={
+                                              pdfPreviews[
+                                                `old-${selectedFile.id}`
+                                              ]
+                                            }
+                                            alt={selectedFile.name}
+                                            className="w-full h-auto min-h-[12vh] max-h-[15vh] object-contain"
+                                          />
+                                        ) : (
+                                          <div className="flex flex-col items-center py-4">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
+                                            <p className="text-gray-500 text-[0.8vw]">
+                                              Loading PDF preview...
+                                            </p>
+                                          </div>
+                                        )
+                                      ) : (
+                                        <img
+                                          src={selectedFile.path}
+                                          alt={selectedFile.name}
+                                          className="w-full h-auto max-h-[12vw] object-contain"
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="flex justify-center align-center gap-[0.5vw]">
+                                      <p className="text-[0.85vw] text-gray-700 font-medium">
+                                        {selectedFile.name}
+                                      </p>
+                                      <span
+                                        className={`inline-block px-3 py-1 rounded text-[0.75vw] font-medium ${
+                                          selectedFile.type === "pdf"
+                                            ? "bg-red-100 text-red-700"
+                                            : "bg-blue-100 text-blue-700"
+                                        }`}
+                                      >
+                                        {selectedFile.type === "pdf"
+                                          ? "PDF"
+                                          : "Image"}
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        setPreviewModal({
+                                          isOpen: true,
+                                          type: selectedFile.type,
+                                          path: selectedFile.path,
+                                          name: selectedFile.name,
+                                        });
+                                      }}
+                                      className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.85vw] transition-all duration-200 shadow-sm hover:shadow-md absolute right-[2vw] top-[1.5vw]"
+                                    >
+                                      <svg
+                                        className="w-[1vw] h-[1vw] inline-block mr-[0.3vw]"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                        />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                        />
+                                      </svg>
+                                      Preview Full
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* NEW DESIGN SECTION */
+                <div>
+                  <div className="mb-[1.25vw]">
+                    <label className="flex items-center gap-[0.6vw] text-[0.85vw] text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={product.designSharedMail}
+                        onChange={(e) => {
+                          updateProduct(
+                            product.id,
+                            "designSharedMail",
+                            e.target.checked,
+                          );
+                          const newValue = e.target.checked
+                            ? "pending"
+                            : "approved";
+                          updateProduct(product.id, "designStatus", newValue);
+                          const productIsPOUpdated =
+                            product.orderStatus &&
+                            product.orderStatus !== "Artwork Pending" &&
+                            product.orderStatus !== "Artwork Approved";
+                          const orderStatusV = e.target.checked
+                            ? "Artwork Pending"
+                            : "Artwork Approved";
+                          if (!productIsPOUpdated) {
+                            updateProduct(
+                              product.id,
+                              "orderStatus",
+                              orderStatusV,
+                            );
+                          }
+                        }}
+                        className="w-[1.1vw] h-[1.1vw] cursor-pointer"
+                      />
+                      <span className="text-[0.85vw] font-medium">
+                        Design Shared In Mail On Last Meeting
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-[2vw]">
+                    <div>
+                      <Select
+                        label="Design Status"
+                        required
+                        placeholder="Select Status"
+                        options={
+                          product.designSharedMail
+                            ? ["Pending"] // Checked → ONLY Pending
+                            : ["Approved"] // Unchecked → ONLY Approved
+                        }
+                        value={
+                          product.designStatus === "pending"
+                            ? "Pending"
+                            : product.designStatus === "approved"
+                              ? "Approved"
+                              : ""
+                        }
+                        onChange={(e) => {
+                          const newValue = e.target.value.toLowerCase();
+                        }}
+                      />
+                    </div>
+
+                    {product.designStatus === "approved" && (
+                      <div>
+                        <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
+                          Approve Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={product.approvedDate}
+                          onChange={(e) =>
+                            updateProduct(
+                              product.id,
+                              "approvedDate",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full px-[0.75vw] py-[0.45vw] border border-gray-300 bg-white rounded-[0.5vw] text-[0.85vw] outline-none box-border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Design Upload Section - Conditional based on imlType */}
+                  {(product.designStatus === "approved" ||
+                    !product.designSharedMail) && (
+                    <div className="mt-[1vw]">
+                      {product.imlType === "LID & TUB" ? (
+                        // Show two separate upload sections for LID & TUB
+                        <div className="space-y-[1.5vw]">
+                          {/* LID Design Upload */}
+                          <div>
+                            <label className="block text-[0.9vw] font-medium text-gray-700 mb-[0.5vw]">
+                              Upload LID Design File{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <div className="grid grid-cols-2 gap-[2vw]">
+                              <div>
+                                <FileUploadBox
+                                  file={localProduct.lidDesignFile}
+                                  onFileChange={(file) => {
+                                    updateLocalField("lidDesignFile", file); // ✅ updateLocalField (not parent updateProduct)
+                                    if (file?.type === "application/pdf") {
+                                      generatePdfThumbnail(
+                                        file,
+                                        `${product.id}-lid`,
+                                      );
+                                    }
+                                  }}
+                                  productId={`${product.id}-lid`}
+                                  small
+                                />
+                              </div>
+                              <div>
+                                {product.lidDesignFile && (
+                                  <DesignPreview
+                                    file={localProduct.lidDesignFile}
+                                    productId={`${localProduct.id}-lid`}
+                                    pdfPreviews={pdfPreviews}
+                                    setPreviewModal={setPreviewModal}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* TUB Design Upload - Optional */}
+                          {!product.singleImlDesign && (
+                            <div>
+                              <label className="block text-[0.9vw] font-medium text-gray-700 mb-[0.5vw]">
+                                Upload TUB Design File{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <div className="grid grid-cols-2 gap-[2vw]">
+                                <div>
+                                  <FileUploadBox
+                                    file={localProduct.tubDesignFile}
+                                    onFileChange={(file) => {
+                                      updateLocalField("tubDesignFile", file); // ✅ localProduct
+                                      if (file?.type === "application/pdf") {
+                                        generatePdfThumbnail(
+                                          file,
+                                          `${product.id}-tub`,
+                                        );
+                                      }
+                                    }}
+                                    productId={`${product.id}-tub`}
+                                    small
+                                  />
+                                </div>
+                                <div>
+                                  {product.tubDesignFile && (
+                                    <DesignPreview
+                                      file={localProduct.tubDesignFile}
+                                      productId={`${localProduct.id}-tub`}
+                                      pdfPreviews={pdfPreviews}
+                                      setPreviewModal={setPreviewModal}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        // Show single upload for LID or TUB only
+                        <div>
+                          <label className="block text-[0.9vw] font-medium text-gray-700 mb-[0.5vw]">
+                            Upload Design File{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <div className="grid grid-cols-2 gap-[2vw]">
+                            <div>
+                              <FileUploadBox
+                                file={localProduct.lidDesignFile}
+                                onFileChange={(file) => {
+                                  updateProductWithDesignStatus(
+                                    localProduct.id,
+                                    "lidDesignFile",
+                                    file,
+                                  );
+                                  if (file && file.type === "application/pdf") {
+                                    generatePdfThumbnail(file, localProduct.id);
+                                  }
+                                }}
+                                productId={localProduct.id}
+                                small
+                              />
+                            </div>
+                            <div>
+                              {product.lidDesignFile && (
+                                <DesignPreview
+                                  file={localProduct.lidDesignFile}
+                                  productId={localProduct.id}
+                                  pdfPreviews={pdfPreviews}
+                                  setPreviewModal={setPreviewModal}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Action Buttons */}
@@ -1539,7 +2654,6 @@ export default function OrdersManagement2() {
     // ✅ ADD LOCAL STATE for immediate updates
     const [localOrders, setLocalOrders] = useState(orders);
     const [invoiceNumber, setInvoiceNumber] = useState("");
-
 
     useEffect(() => {
       // Sync with parent orders
@@ -1586,6 +2700,18 @@ export default function OrdersManagement2() {
       isOpen: false,
       requestIndex: -1,
     });
+
+    console.log(`Current Product: ${JSON.stringify(currentProduct, null, 2)}`);
+
+    console.log(
+      `Revised estimate : ${JSON.stringify(currentProduct?.revisedEstimate, null, 2)}`,
+    );
+    console.log(
+      `Estimated number: ${currentProduct?.revisedEstimate?.estimatedNumber}`,
+    );
+    console.log(
+      `Estimated value: ${currentProduct?.revisedEstimate?.estimatedValue}`,
+    );
 
     // ✅ UPDATED handleAction - uses local state
     const handleAction = (requestIndex, action) => {
@@ -1641,18 +2767,32 @@ export default function OrdersManagement2() {
             o.id === order.id
               ? {
                   ...o,
-                  products: o.products.filter((p) => p.id !== currentProduct.id),
+                  orderEstimate: {
+                    ...o.orderEstimate,
+                    estimatedNumber:
+                      request.revisedEstimate?.estimatedNumber ||
+                      o.orderEstimate.estimatedNumber,
+                    estimatedValue: parseInt(
+                      request.revisedEstimate?.estimatedValue ||
+                        o.orderEstimate.estimatedValue,
+                    ),
+                  },
+                  products: o.products.filter(
+                    (p) => p.id !== currentProduct.id,
+                  ),
                   invoices: [
                     ...(o.invoices || []),
                     {
                       id: `INV-${Date.now()}`,
                       productId: currentProduct.id,
                       productName:
-                        currentProduct.productName || currentProduct.productName,
+                        currentProduct.productName ||
+                        currentProduct.productName,
                       size: currentProduct.size || currentProduct.size,
                       invoiceNo: invoiceNumber,
                       invoiceDate: new Date().toISOString(),
-                      amount: currentProduct.budget || currentProduct.budget || 0,
+                      amount:
+                        currentProduct.budget || currentProduct.budget || 0,
                       reason: "Product Deleted",
                       remarks: remarks,
                       status: "Draft",
@@ -1668,6 +2808,16 @@ export default function OrdersManagement2() {
             o.id === order.id
               ? {
                   ...o,
+                  orderEstimate: {
+                    ...o.orderEstimate,
+                    estimatedNumber:
+                      request.revisedEstimate?.estimatedNumber ||
+                      o.orderEstimate.estimatedNumber,
+                    estimatedValue: parseInt(
+                      request.revisedEstimate?.estimatedValue ||
+                        o.orderEstimate.estimatedValue,
+                    ),
+                  },
                   products: o.products.map((p) =>
                     p.id === currentProduct.id
                       ? {
@@ -1720,14 +2870,13 @@ export default function OrdersManagement2() {
         setOrders(updatedOrders);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
         window.dispatchEvent(new Event("ordersUpdated"));
-        
+
         if (action === "accept") {
           if (request.type === "delete") {
             alert("Product deleted!!");
-            setViewRequestModal({isOpen: false, order: null, product: null});
+            setViewRequestModal({ isOpen: false, order: null, product: null });
           }
         }
-
       } else {
         // ✅ DECLINE - Just update status (no product changes)
         setLocalOrders(updatedOrders);
@@ -1738,7 +2887,7 @@ export default function OrdersManagement2() {
 
       // Close remarks
       setRemarksModal({ isOpen: false, requestIndex: -1, action: "" });
-      
+
       setRemarks("");
     };
 
@@ -1747,6 +2896,7 @@ export default function OrdersManagement2() {
       const changes = request.requestedChanges || {};
       const fields = [];
 
+      // ✅ EXISTING FIELDS (keep all)
       if (changes.productName)
         fields.push(`Product Name: ${changes.productName}`);
       if (changes.size) fields.push(`Size: ${changes.size}`);
@@ -1762,6 +2912,22 @@ export default function OrdersManagement2() {
         fields.push(`TUB Label Qty: ${changes.tubLabelQty}`);
       if (changes.tubProductionQty !== undefined)
         fields.push(`TUB Prod Qty: ${changes.tubProductionQty}`);
+
+      // 🔥 NEW: DESIGN FILE CHANGES
+      if (changes.lidDesignFile) {
+        fields.push(
+          `LID Design: ${changes.lidDesignFile.name} (${Math.round(changes.lidDesignFile.size / 1024)}KB)`,
+        );
+      }
+      if (changes.tubDesignFile) {
+        fields.push(
+          `TUB Design: ${changes.tubDesignFile.name} (${Math.round(changes.tubDesignFile.size / 1024)}KB)`,
+        );
+      }
+      if (changes.lidSelectedOldDesign)
+        fields.push(`LID Old Design: ${changes.lidSelectedOldDesign}`);
+      if (changes.tubSelectedOldDesign)
+        fields.push(`TUB Old Design: ${changes.tubSelectedOldDesign}`);
 
       return fields.length > 0 ? fields : ["No specific changes recorded"];
     };
@@ -1845,44 +3011,64 @@ export default function OrdersManagement2() {
                               </p>
                               <p>
                                 <strong>IML Name:</strong>{" "}
-                                {currentProduct.imlName}
+                                {currentProduct.imlName ||
+                                  currentProduct?.changeRequests?.productDetails
+                                    ?.imlName}
                               </p>
                               <p>
                                 <strong>IML Type:</strong>{" "}
-                                {currentProduct.imlType}
+                                {currentProduct.imlType ||
+                                  currentProduct?.changeRequests?.productDetails
+                                    ?.imlType}
                               </p>
                             </div>
                             <div>
                               <p>
                                 <strong>LID Color:</strong>{" "}
-                                {currentProduct.lidColor}
+                                {currentProduct.lidColor ||
+                                  currentProduct?.changeRequests?.productDetails
+                                    ?.lidColor}
                               </p>
                               <p>
                                 <strong>TUB Color:</strong>{" "}
-                                {currentProduct.tubColor}
+                                {currentProduct.tubColor ||
+                                  currentProduct?.changeRequests?.productDetails
+                                    ?.tubColor}
                               </p>
 
                               {currentProduct.imlType === "LID" && (
                                 <p>
                                   <strong>LID Label Qty:</strong>{" "}
-                                  {currentProduct.lidLabelQty || "N/A"}
+                                  {currentProduct.lidLabelQty ||
+                                    currentProduct?.changeRequests
+                                      ?.productDetails?.lidLabelQty ||
+                                    "N/A"}
                                 </p>
                               )}
                               {currentProduct.imlType === "TUB" && (
                                 <p>
                                   <strong>TUB Label Qty:</strong>{" "}
-                                  {currentProduct.tubLabelQty || "N/A"}
+                                  {currentProduct.tubLabelQty ||
+                                    currentProduct?.changeRequests
+                                      ?.productDetails?.tubLabelQty ||
+                                    "N/A"}
                                 </p>
                               )}
                               {currentProduct.imlType === "LID & TUB" && (
                                 <>
                                   <p>
                                     <strong>LID Label Qty:</strong>{" "}
-                                    {currentProduct.lidLabelQty || "N/A"}
+                                    {currentProduct.lidLabelQty ||
+                                      currentProduct?.changeRequests
+                                        ?.productDetails?.lidLabelQty ||
+                                      "N/A"}
                                   </p>
                                   <p>
                                     <strong>TUB Label Qty:</strong>{" "}
-                                    {currentProduct.tubLabelQty || "N/A"}
+                                    {currentProduct.tubLabelQty ||
+                                      currentProduct?.changeRequests
+                                        ?.productDetails?.tubLabelQty ||
+                                      "N/A"}
                                   </p>
                                 </>
                               )}
@@ -1905,19 +3091,23 @@ export default function OrdersManagement2() {
                           <div className="space-y-1 text-sm">
                             <p>
                               <strong>IML Name:</strong>{" "}
-                              {request.originalDetails?.imlName}
+                              {request.originalDetails?.imlName ||
+                                currentProduct?.imlName}
                             </p>
                             <p>
                               <strong>LID Color:</strong>{" "}
-                              {request.originalDetails?.lidColor}
+                              {request.originalDetails?.lidColor ||
+                                currentProduct?.lidColor}
                             </p>
                             <p>
                               <strong>TUB Color:</strong>{" "}
-                              {request.originalDetails?.tubColor}
+                              {request.originalDetails?.tubColor ||
+                                currentProduct?.tubColor}
                             </p>
                             <p>
                               <strong>IML Type:</strong>{" "}
-                              {request.originalDetails?.imlType}
+                              {request.originalDetails?.imlType ||
+                                currentProduct?.imlType}
                             </p>
                           </div>
                         </div>
@@ -1925,15 +3115,146 @@ export default function OrdersManagement2() {
                           <h4 className="font-semibold text-indigo-800 mb-3">
                             Requested Changes
                           </h4>
+                          {/* 🔥 DESIGN FILES - With ACTUAL IMAGE PREVIEW */}
+                          {/* 🔥 SAFE DESIGN FILES PREVIEW */}
+{(request.requestedChanges?.lidDesignFile || request.requestedChanges?.tubDesignFile) && (
+  <div className="mb-6 space-y-4">
+    <h5 className="font-medium text-indigo-900 mb-3 flex items-center gap-2">
+      📄 Design Files 
+    </h5>
+    
+    <div className="grid">
+      {/* 🔥 LID DESIGN */}
+      {request.requestedChanges?.lidDesignFile && (
+        <div className="bg-white border border-indigo-200 rounded-xl p-4 hover:shadow-lg transition-all">
+          <div className="flex items-start gap-3 mb-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-medium flex-shrink-0 ${
+              request.requestedChanges.lidDesignFile.type?.includes('pdf') 
+                ? 'bg-gradient-to-br from-blue-500 to-blue-600' 
+                : 'bg-gradient-to-br from-purple-500 to-pink-600'
+            }`}>
+              {request.requestedChanges.lidDesignFile.type?.includes('pdf') ? 'PDF' : 'IMG'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-indigo-900 truncate pr-2">
+                {request.requestedChanges.lidDesignFile.name}
+              </div>
+              <div className="text-xs text-gray-500">
+                {Math.round(request.requestedChanges.lidDesignFile.size / 1024)} KB
+              </div>
+            </div>
+          </div>
+
+          {/* 🔥 SAFE IMAGE PREVIEW */}
+          <div className="w-full h-48 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden flex items-center justify-center border-2 border-dashed border-gray-200">
+            {(() => {
+              // 🔥 SAFE VALIDATION
+              const isValidImageFile = currentProduct.lidDesignFile && 
+                                     (currentProduct.lidDesignFile instanceof File || 
+                                      currentProduct.lidDesignFile instanceof Blob) &&
+                                     currentProduct.lidDesignFile.type?.startsWith('image/');
+              
+              if (isValidImageFile) {
+                return (
+                  <img 
+                    src={URL.createObjectURL(currentProduct.lidDesignFile)} 
+                    alt="LID Design Preview"
+                    className="w-full h-full object-contain bg-white"
+                  />
+                );
+              } else {
+                return (
+                  <div className="text-center p-6 text-gray-400">
+                    <div className="w-[5vw] h-[5vw] mx-auto mb-3 bg-gradient-to-br from-gray-300 to-gray-400 rounded-lg flex items-center justify-center text-white text-sm font-medium">
+                      {request.requestedChanges.lidDesignFile.type?.includes('pdf') ? 'PDF' : 'IMG'}
+                    </div>
+                    <div className="text-sm font-medium">Preview Unavailable</div>
+                    <div className="text-xs mt-1">File not loaded</div>
+                  </div>
+                );
+              }
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 TUB DESIGN - SAME PATTERN */}
+      {request.requestedChanges?.tubDesignFile && (
+        <div className="bg-white border border-indigo-200 rounded-xl p-4 hover:shadow-lg transition-all mt-[.5vw]">
+          <div className="flex items-start gap-3 mb-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-medium flex-shrink-0 ${
+              request.requestedChanges.tubDesignFile.type?.includes('pdf') 
+                ? 'bg-gradient-to-br from-green-500 to-emerald-600' 
+                : 'bg-gradient-to-br from-orange-500 to-red-600'
+            }`}>
+              {request.requestedChanges.tubDesignFile.type?.includes('pdf') ? 'PDF' : 'IMG'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-indigo-900 truncate pr-2">
+                {request.requestedChanges.tubDesignFile.name}
+              </div>
+              <div className="text-xs text-gray-500">
+                {Math.round(request.requestedChanges.tubDesignFile.size / 1024)} KB
+              </div>
+            </div>
+          </div>
+
+          <div className="w-full h-48  bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden flex items-center justify-center border-2 border-dashed border-gray-200">
+            {(() => {
+              const isValidImageFile = currentProduct.tubDesignFile && 
+                                     (currentProduct.tubDesignFile instanceof File || 
+                                      currentProduct.tubDesignFile instanceof Blob) &&
+                                     currentProduct.tubDesignFile.type?.startsWith('image/');
+              
+              if (isValidImageFile) {
+                return (
+                  <img 
+                    src={URL.createObjectURL(currentProduct.tubDesignFile)} 
+                    alt="TUB Design Preview"
+                    className="w-full h-full object-contain bg-white"
+                  />
+                );
+              } else {
+                return (
+                  <div className="text-center p-6 text-gray-400">
+                    <div className="w-16 h-16 mx-auto mb-3 bg-gradient-to-br from-gray-300 to-gray-400 rounded-lg flex items-center justify-center text-white text-sm font-medium">
+                      {request.requestedChanges.tubDesignFile.type?.includes('pdf') ? 'PDF' : 'IMG'}
+                    </div>
+                    <div className="text-sm font-medium">Preview Unavailable</div>
+                    <div className="text-xs mt-1">File not loaded</div>
+                  </div>
+                );
+              }
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+
                           <div className="space-y-1 text-sm">
                             {getChangedFields(request).map((field, idx) => (
-                              <p
-                                key={idx}
-                                className="bg-indigo-100 px-2 py-1 rounded text-indigo-900 font-medium"
-                              >
-                                {field}
-                              </p>
+                              <>
+                                <p
+                                  key={idx}
+                                  className="bg-indigo-100 px-2 py-1 rounded text-indigo-900 font-medium"
+                                >
+                                  {field}
+                                </p>
+                              </>
                             ))}
+                            <div className="space-y-[.25vw] text-[.8vw] text-black font-medium mt-[1vw]">
+                              <p>
+                                Revised Estimated No:{" "}
+                                {request.revisedEstimate?.estimatedNumber}
+                              </p>
+                              <p>
+                                Revised Estimated Value:{" "}
+                                {request.revisedEstimate?.estimatedValue}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2042,20 +3363,7 @@ export default function OrdersManagement2() {
               </div>
 
               {/* ✅ INVOICE NUMBER - ONLY FOR DELETE + ACCEPT */}
-              {remarksModal.action === "accept" && changeRequests[remarksModal.requestIndex]?.type === "delete" && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Invoice Number <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={invoiceNumber}
-                    onChange={(e) => setInvoiceNumber(e.target.value)}
-                    placeholder="Enter invoice number (e.g., INV-2026-001)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-              )}
+              
 
               <div className="flex gap-3">
                 <button
@@ -2561,7 +3869,7 @@ export default function OrdersManagement2() {
       o.id === revision.orderId
         ? {
             ...o,
-            orderEstimate: { ...o.orderEstimate, ...localRevisedEstimate }, // Update estimate
+            // orderEstimate: { ...o.orderEstimate, ...localRevisedEstimate }, // Update estimate
             products: o.products.map((p) =>
               p.id === revision.productId
                 ? {
@@ -2570,6 +3878,11 @@ export default function OrdersManagement2() {
                       ...(p.changeRequests || []),
                       changeRequest,
                     ],
+                    revisedEstimate: {
+                      // 🔥 NEW - Per request
+                      ...o.orderEstimate,
+                      ...localRevisedEstimate,
+                    },
                   }
                 : p,
             ),
@@ -2584,139 +3897,456 @@ export default function OrdersManagement2() {
     setEstimateRevisionModal({ isOpen: false, revision: null });
   };
 
+  // const EstimateRevisionModal = () => {
+  //   if (!estimateRevisionModal.isOpen) return null;
+
+  //   const { revision, isOpen } = estimateRevisionModal;
+  // const isEditMode = revision?.isEditMode || false;
+
+  //   const handleSaveRevisedEstimate = () => {
+  //   const revisedEstimateNo = document.getElementById('revisedEstimateNo')?.value || '';
+  //   const revisedEstimateValue = parseFloat(document.getElementById('revisedEstimateValue')?.value) || 0;
+
+  //   if (!revisedEstimateNo || !revisedEstimateValue) {
+  //     alert('Please enter both Revised Estimate No & Value');
+  //     return;
+  //   }
+
+  //   if (isEditMode) {
+  //     // 🚀 EDIT MODE: DIRECT SAVE
+  //     handleDirectSave(tempChangeRequest.localProductChanges, revisedEstimateNo, revisedEstimateValue);
+  //   } else {
+  //     // 📤 REQUEST MODE: Send as Request
+  //     handleSendAsRequest(tempChangeRequest, revisedEstimateNo, revisedEstimateValue);
+  //   }
+  // };
+
+  //   const order = orders.find((o) => o.id === revision.orderId);
+
+  //   const [localRevisedEstimate, setLocalRevisedEstimate] = useState({
+  //     estimatedNumber: revision.originalEstimate?.estimatedNumber || "",
+  //     estimatedValue: revision.originalEstimate?.estimatedValue || "",
+  //   });
+
+  //   useEffect(() => {
+  //     if (revision?.originalEstimate) {
+  //       setLocalRevisedEstimate({
+  //         estimatedNumber: 0,
+  //         estimatedValue: 0,
+  //       });
+  //     }
+  //   }, [revision]);
+
+  //   // ✅ PASS DATA UP - Don't save here
+  //   const handleSaveClick = () => {
+  //     if (
+  //       !localRevisedEstimate.estimatedNumber?.trim() ||
+  //       !localRevisedEstimate.estimatedValue?.trim()
+  //     ) {
+  //       alert(
+  //         "Revised estimated no & value are required to submit change request.",
+  //       );
+  //       return;
+  //     }
+
+  //     // Call parent handler with data
+  //     handleSaveEstimateRevision(revision, localRevisedEstimate);
+  //   };
+
+  //   return (
+  //     <div className="fixed inset-0 bg-[#000000b3] z-[50001] flex items-center justify-center p-4">
+  //       <div className="bg-white rounded-lg max-w-3xl w-full p-6">
+  //         {/* Header */}
+  //         <div className="flex items-center justify-between mb-6">
+  //           <h2 className="text-xl font-semibold">Revised Estimate Details</h2>
+  //           <button
+  //             onClick={() =>
+  //               setEstimateRevisionModal({ isOpen: false, revision: null })
+  //             }
+  //             className="text-2xl font-bold cursor-pointer"
+  //           >
+  //             ×
+  //           </button>
+  //         </div>
+
+  //         {/* Order Info */}
+  //         <div className="space-y-4 mb-6 max-h-[50vh] overflow-y-auto">
+  //           <Input
+  //             label="Company Name"
+  //             value={order?.contact.company || ""}
+  //             disabled={true}
+  //           />
+  //           <Input
+  //             label="Contact Name"
+  //             value={order?.contact.contactName || ""}
+  //             disabled={true}
+  //           />
+  //           <Input
+  //             label="Contact Number"
+  //             value={order?.contact.phone || ""}
+  //             disabled={true}
+  //           />
+  //           <Select
+  //             label="Priority"
+  //             value={order?.contact.priority}
+  //             disabled={true}
+  //             options={PRIORITY_OPTIONS}
+  //           />
+  //           <Input
+  //             label="Order Number"
+  //             value={order?.orderNumber || ""}
+  //             disabled={true}
+  //           />
+  //           <Input
+  //             label="Original Estimated Number"
+  //             value={order.orderEstimate?.estimatedNumber || ""}
+  //             disabled={true}
+  //           />
+  //           <Input
+  //             label="Original Estimated Value"
+  //             value={
+  //               order.orderEstimate?.estimatedValue?.toLocaleString() || ""
+  //             }
+  //             disabled={true}
+  //           />
+  //         </div>
+
+  //         {/* Editable Fields */}
+  //         <div className="grid grid-cols-2 gap-4 mb-6">
+  //           <Input
+  //             label="Revised Estimated Number"
+  //             value={localRevisedEstimate.estimatedNumber}
+  //             type="number"
+  //             onChange={(e) =>
+  //               setLocalRevisedEstimate({
+  //                 ...localRevisedEstimate,
+  //                 estimatedNumber: e.target.value,
+  //               })
+  //             }
+  //             placeholder="EST-001"
+  //           />
+  //           <Input
+  //             label="Revised Estimated Value"
+  //             value={localRevisedEstimate.estimatedValue}
+  //             type="number"
+  //             onChange={(e) =>
+  //               setLocalRevisedEstimate({
+  //                 ...localRevisedEstimate,
+  //                 estimatedValue: e.target.value,
+  //               })
+  //             }
+  //             placeholder="45000"
+  //           />
+  //         </div>
+
+  //         {/* ✅ Fixed Button */}
+  //         {/* <button
+  //           onClick={handleSaveClick} // ✅ Calls parent function
+  //           disabled={
+  //             !localRevisedEstimate.estimatedNumber ||
+  //             !localRevisedEstimate.estimatedValue
+  //           }
+  //           className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-all"
+  //         >
+  //           Save Revised Estimate
+  //         </button> */}
+  //          <button
+  //           onClick={handleSaveRevisedEstimate}
+  //           className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+  //         >
+  //           {isEditMode ? '💾 Save Directly' : '📤 Send Request'}
+  //         </button>
+  //       </div>
+  //     </div>
+  //   );
+  // };
+
+  // 🔥 NEW FUNCTIONS - Add these to OrdersManagement2
+  const handleDirectSave = (
+    localProduct,
+    revisedEstimateNo,
+    revisedEstimateValue,
+  ) => {
+    const updatedOrders = orders.map((o) =>
+      o.id === tempChangeRequest.orderId
+        ? {
+            ...o,
+            orderEstimate: {
+              ...o.orderEstimate,
+              estimatedNumber: revisedEstimateNo,
+              estimatedValue: revisedEstimateValue,
+            },
+            products: o.products.map((p) =>
+              p.id === tempChangeRequest.productId
+                ? { ...p, ...localProduct } // ✅ Apply all changes
+                : p,
+            ),
+          }
+        : o,
+    );
+
+    setOrders(updatedOrders);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new Event("ordersUpdated"));
+
+    setEstimateRevisionModal({ isOpen: false, revision: null });
+    sessionStorage.removeItem("isEditMode");
+
+    alert(
+      `✅ Order updated directly!\nEstimate: ${revisedEstimateNo}\nValue: ₹${revisedEstimateValue}`,
+    );
+  };
+
+  const handleSendAsRequest = (
+    changeRequest,
+    revisedEstimateNo,
+    revisedEstimateValue,
+  ) => {
+    // ✅ YOUR ORIGINAL REQUEST LOGIC (enhanced with estimate)
+    const now = new Date().toISOString();
+
+    const updatedOrders = orders.map((o) =>
+      o.id === changeRequest.orderId
+        ? {
+            ...o,
+            products: o.products.map((p) =>
+              p.id === changeRequest.productId
+                ? {
+                    ...p,
+                    orderStatus: "CR Approval Pending",
+                    changeRequests: [
+                      ...(p.changeRequests || []),
+                      {
+                        type: "change",
+                        timestamp: now,
+                        originalDetails: { ...changeRequest.productDetails },
+                        requestedChanges: changeRequest.requestedChanges,
+                        revisedEstimate: {
+                          estimateNo: revisedEstimateNo,
+                          estimateValue: revisedEstimateValue,
+                        },
+                      },
+                    ],
+                  }
+                : p,
+            ),
+          }
+        : o,
+    );
+
+    setOrders(updatedOrders);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new Event("ordersUpdated"));
+
+    setEstimateRevisionModal({ isOpen: false, revision: null });
+    alert(
+      `📤 Request sent!\nEstimate: ${revisedEstimateNo}\nValue: ₹${revisedEstimateValue}`,
+    );
+  };
+
   const EstimateRevisionModal = () => {
-    if (!estimateRevisionModal.isOpen) return null;
+    if (!estimateRevisionModal.isOpen || !estimateRevisionModal.revision)
+      return null;
 
     const { revision } = estimateRevisionModal;
+    const isEditMode = revision?.isEditMode || false;
+
+    // 🔥 FIX 1: Get order from PARENT scope (not local)
     const order = orders.find((o) => o.id === revision.orderId);
 
+    // 🔥 FIX 2: Proper local state initialization
     const [localRevisedEstimate, setLocalRevisedEstimate] = useState({
-      estimatedNumber: revision.originalEstimate?.estimatedNumber || "",
-      estimatedValue: revision.originalEstimate?.estimatedValue || "",
+      estimatedNumber: "",
+      estimatedValue: "",
     });
 
+    // 🔥 FIX 3: CORRECT useEffect - populate from original estimate
     useEffect(() => {
       if (revision?.originalEstimate) {
         setLocalRevisedEstimate({
-          estimatedNumber: 0,
-          estimatedValue: 0,
+          estimatedNumber: revision.originalEstimate.estimatedNumber || "",
+          estimatedValue: revision.originalEstimate.estimatedValue || "",
         });
       }
     }, [revision]);
 
-    // ✅ PASS DATA UP - Don't save here
-    const handleSaveClick = () => {
+    // 🔥 FIX 4: NO DOM queries - use controlled inputs
+    const handleSaveRevisedEstimate = () => {
+      const { estimatedNumber, estimatedValue } = localRevisedEstimate;
+
       if (
-        !localRevisedEstimate.estimatedNumber?.trim() ||
-        !localRevisedEstimate.estimatedValue?.trim()
+        !estimatedNumber?.trim() ||
+        !estimatedValue ||
+        parseFloat(estimatedValue) <= 0
       ) {
-        alert(
-          "Revised estimated no & value are required to submit change request.",
-        );
+        alert("Please enter both valid Revised Estimate No & Value");
         return;
       }
 
-      // Call parent handler with data
-      handleSaveEstimateRevision(revision, localRevisedEstimate);
+      // 🔥 FIX 5: Access tempChangeRequest from parent scope
+      if (isEditMode && tempChangeRequest?.localProductChanges) {
+        // 🚀 EDIT MODE: DIRECT SAVE
+        handleDirectSave(
+          tempChangeRequest.localProductChanges,
+          estimatedNumber,
+          parseFloat(estimatedValue),
+        );
+      } else if (tempChangeRequest) {
+        // 📤 REQUEST MODE
+        handleSendAsRequest(
+          tempChangeRequest,
+          estimatedNumber,
+          parseFloat(estimatedValue),
+        );
+      } else {
+        alert("Error: Missing change data");
+      }
     };
 
     return (
       <div className="fixed inset-0 bg-[#000000b3] z-[50001] flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg max-w-3xl w-full p-6">
+        <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold">Revised Estimate Details</h2>
+          <div className="flex items-center justify-between p-6 border-b">
+            <h2 className="text-xl font-semibold">
+              {isEditMode
+                ? "💾 Save Revised Estimate"
+                : "📤 Send Change Request"}
+            </h2>
             <button
               onClick={() =>
                 setEstimateRevisionModal({ isOpen: false, revision: null })
               }
-              className="text-2xl font-bold cursor-pointer"
+              className="text-2xl font-bold cursor-pointer hover:text-gray-700"
             >
               ×
             </button>
           </div>
 
-          {/* Order Info */}
-          <div className="space-y-4 mb-6 max-h-[50vh] overflow-y-auto">
-            <Input
-              label="Company Name"
-              value={order?.contact.company || ""}
-              disabled={true}
-            />
-            <Input
-              label="Contact Name"
-              value={order?.contact.contactName || ""}
-              disabled={true}
-            />
-            <Input
-              label="Contact Number"
-              value={order?.contact.phone || ""}
-              disabled={true}
-            />
-            <Select
-              label="Priority"
-              value={order?.contact.priority}
-              disabled={true}
-              options={PRIORITY_OPTIONS}
-            />
-            <Input
-              label="Order Number"
-              value={order?.orderNumber || ""}
-              disabled={true}
-            />
-            <Input
-              label="Original Estimated Number"
-              value={order.orderEstimate?.estimatedNumber || ""}
-              disabled={true}
-            />
-            <Input
-              label="Original Estimated Value"
-              value={
-                order.orderEstimate?.estimatedValue?.toLocaleString() || ""
-              }
-              disabled={true}
-            />
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Order Info - Read Only */}
+            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+              <Input
+                label="Company Name"
+                value={order?.contact.company || ""}
+                disabled
+              />
+              <Input
+                label="Contact Name"
+                value={order?.contact.contactName || ""}
+                disabled
+              />
+              <Input
+                label="Contact Number"
+                value={order?.contact.phone || ""}
+                disabled
+              />
+              <Input
+                label="Order Number"
+                value={order?.orderNumber || ""}
+                disabled
+              />
+              <Input
+                label="Original Estimate No"
+                value={order?.orderEstimate?.estimatedNumber || ""}
+                disabled
+              />
+              <Input
+                label="Original Estimate Value"
+                value={(
+                  order?.orderEstimate?.estimatedValue || 0
+                ).toLocaleString()}
+                disabled
+              />
+            </div>
+
+            {/* 🔥 REVISED FIELDS - Editable */}
+            <div className="bg-blue-50 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold text-blue-800 mb-4">
+                Revised Estimate
+              </h3>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Revised Estimate Number{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="revisedEstimateNo"
+                    type="text"
+                    value={localRevisedEstimate.estimatedNumber}
+                    onChange={(e) =>
+                      setLocalRevisedEstimate({
+                        ...localRevisedEstimate,
+                        estimatedNumber: e.target.value,
+                      })
+                    }
+                    placeholder="EST-001"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Revised Estimate Value{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="revisedEstimateValue"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localRevisedEstimate.estimatedValue}
+                    onChange={(e) =>
+                      setLocalRevisedEstimate({
+                        ...localRevisedEstimate,
+                        estimatedValue: e.target.value,
+                      })
+                    }
+                    placeholder="45000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Changes Summary */}
+            {revision.requestedChanges && (
+              <div className="bg-yellow-50 p-4 rounded-lg">
+                <h4 className="font-medium text-yellow-800 mb-2">
+                  Changes Requested:
+                </h4>
+                <pre className="text-xs bg-white p-3 rounded text-gray-800 max-h-32 overflow-y-auto">
+                  {JSON.stringify(revision.requestedChanges, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
 
-          {/* Editable Fields */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <Input
-              label="Revised Estimated Number"
-              value={localRevisedEstimate.estimatedNumber}
-              type="number"
-              onChange={(e) =>
-                setLocalRevisedEstimate({
-                  ...localRevisedEstimate,
-                  estimatedNumber: e.target.value,
-                })
+          {/* Action Buttons */}
+          <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
+            <button
+              onClick={() =>
+                setEstimateRevisionModal({ isOpen: false, revision: null })
               }
-              placeholder="EST-001"
-            />
-            <Input
-              label="Revised Estimated Value"
-              value={localRevisedEstimate.estimatedValue}
-              type="number"
-              onChange={(e) =>
-                setLocalRevisedEstimate({
-                  ...localRevisedEstimate,
-                  estimatedValue: e.target.value,
-                })
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveRevisedEstimate}
+              disabled={
+                !localRevisedEstimate.estimatedNumber?.trim() ||
+                !localRevisedEstimate.estimatedValue ||
+                parseFloat(localRevisedEstimate.estimatedValue) <= 0
               }
-              placeholder="45000"
-            />
+              className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-all disabled:opacity-50"
+            >
+              {isEditMode ? "💾 Save Directly" : "📤 Send Request"}
+            </button>
           </div>
-
-          {/* ✅ Fixed Button */}
-          <button
-            onClick={handleSaveClick} // ✅ Calls parent function
-            disabled={
-              !localRevisedEstimate.estimatedNumber ||
-              !localRevisedEstimate.estimatedValue
-            }
-            className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed transition-all"
-          >
-            Save Revised Estimate
-          </button>
         </div>
       </div>
     );
@@ -3725,6 +5355,442 @@ export default function OrdersManagement2() {
       </div>
     );
   };
+
+  // 🔥 SIMPLE DELETE CONFIRM MODAL
+  const ProductDeleteConfirmModal = () => {
+    if (!productDeleteConfirm.isOpen) return null;
+    
+    const { orderId, productId, productName } = productDeleteConfirm;
+    const order = orders.find(o => o.id === orderId);
+    const product = order?.products?.find(p => p.id === productId);
+
+    const handleSoftDelete = () => {
+      // 🔥 STEP 1: Set productDeleted flag (NO removal)
+      const updatedOrders = orders.map(o =>
+        o.id === orderId
+          ? {
+              ...o,
+              products: o.products.map(p =>
+                p.id === productId
+                  ? { ...p, productDeleted: true }  // 🔥 SOFT FLAG
+                  : p
+              )
+            }
+          : o
+      );
+      
+      setOrders(updatedOrders);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+      
+      // 🔥 STEP 2: Invoice number prompt
+      const invoiceNumber = prompt(`Enter Invoice Number for deleted product:\n${productName}`);
+      if (invoiceNumber) {
+        const finalOrders = updatedOrders.map(o =>
+          o.id === orderId
+            ? {
+                ...o,
+                invoices: [
+                  ...o.invoices,
+                  {
+                    id: `INV-DEL-${Date.now()}`,
+                    productId,
+                    productName,
+                    invoiceNo: invoiceNumber,
+                    amount: product.budget || 0,
+                    reason: "Product Soft Deleted",
+                    status: "Generated",
+                    createdAt: new Date().toISOString()
+                  }
+                ]
+              }
+            : o
+        );
+        setOrders(finalOrders);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(finalOrders));
+      }
+      
+      // 🔥 CLOSE MODAL
+      setProductDeleteConfirm({ isOpen: false, orderId: null, productId: null, productName: "" });
+      window.dispatchEvent(new Event('ordersUpdated'));
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/60 z-[50005] flex items-center justify-center p-6">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <span className="text-3xl text-red-600">🗑️</span>
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-4">
+              Soft Delete Product?
+            </h2>
+            <p className="text-lg text-gray-700 mb-2">
+              <strong>{productName}</strong> will be <span className="text-red-600 font-bold">hidden</span> from dashboard
+            </p>
+            <p className="text-sm text-gray-500">Invoice will be generated for admin review</p>
+          </div>
+          
+          <div className="flex gap-4">
+            <button
+              onClick={() => setProductDeleteConfirm({ isOpen: false, orderId: null, productId: null, productName: "" })}
+              className="flex-1 px-6 py-3 bg-gray-300 text-gray-800 rounded-xl hover:bg-gray-400 font-bold transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSoftDelete}
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:shadow-xl font-bold transition-all"
+            >
+              Confirm Soft Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+const AllInvoicesModal = () => {
+  if (!allInvoicesModal.isOpen) return null;
+  
+  const { invoices = [], deletedInvoices = [] } = allInvoicesModal;
+  
+  // FIXED grouping (same as before)
+  const groupedInvoices = invoices.reduce((acc, invoice, index) => {
+    let orderId = invoice.orderId || invoice.order?.id;
+    if (!orderId && invoice.invoiceNo) {
+      const match = invoice.invoiceNo.match(/ORD-[^-]+/);
+      orderId = match ? match[0] : null;
+    }
+    if (!orderId && invoice.orderNumber) {
+      orderId = invoice.orderNumber;
+    }
+    if (!orderId) {
+      orderId = invoice.invoiceNo || `invoice-${index}`;
+    }
+    
+    const orderNumber = invoice.orderNumber || invoice.invoiceNo || `Order ${orderId.slice(-8)}`;
+    const company = invoice.company || invoice.order?.contact?.company || 
+                   (invoice.invoiceNo ? invoice.invoiceNo.split('-')[0] : 'Unknown Company');
+    
+    if (!acc[orderId]) {
+      acc[orderId] = {
+        orderId,
+        orderNumber,
+        company,
+        totalAmount: 0,
+        invoices: []
+      };
+    }
+    
+    acc[orderId].invoices.push(invoice);
+    acc[orderId].totalAmount += parseFloat(invoice.amount || invoice.total || 0);
+    
+    return acc;
+  }, {});
+
+  // Delete state & handlers (unchanged)
+  const [deleteConfirm, setDeleteConfirm] = useState({
+    isOpen: false,
+    invoiceId: null,
+    orderId: null,
+    orderNumber: '',
+    invoiceDetails: null
+  });
+
+  const handleDeleteConfirm = (invoiceId, orderId, orderNumber, invoiceDetails) => {
+    setDeleteConfirm({ isOpen: true, invoiceId, orderId, orderNumber, invoiceDetails });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteConfirm.invoiceId || !deleteConfirm.orderId) return;
+    
+    const updatedOrders = orders.map(order => 
+      order.id === deleteConfirm.orderId
+        ? {
+            ...order,
+            products: order.products.map(product => ({
+              ...product,
+              invoices: product.invoices?.filter(inv => inv.id !== deleteConfirm.invoiceId) || []
+            }))
+          }
+        : order
+    );
+    
+    setOrders(updatedOrders);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new Event("ordersUpdated"));
+    
+    setDeleteConfirm({ isOpen: false, invoiceId: null, orderId: null, orderNumber: '', invoiceDetails: null });
+    alert("Invoice deleted successfully!");
+  };
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60 z-[50010] flex items-center justify-center p-[1.5vw]">
+        <div className="bg-white rounded-[1.8vw] max-w-[92vw] w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+          
+          {/* TABS */}
+          <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white p-[1.8vw] rounded-t-[1.8vw]">
+            <div className="flex gap-[1.2vw]">
+              <button onClick={() => setAllInvoicesTab('active')} className={`px-[2.5vw] py-[1vw] font-bold rounded-[1.2vw] transition-all text-[0.95vw] flex items-center gap-[0.5vw] ${
+                allInvoicesTab === 'active' ? 'bg-white text-indigo-700 shadow-[0_0.4vw_1vw_rgba(0,0,0,0.3)]' : 'hover:bg-white/30 hover:scale-[1.02]'
+              }`}>
+                📋 Active ({Object.keys(groupedInvoices).length})
+              </button>
+              <button onClick={() => setAllInvoicesTab('deleted')} className={`px-[2.5vw] py-[1vw] font-bold rounded-[1.2vw] transition-all text-[0.95vw] flex items-center gap-[0.5vw] ${
+                allInvoicesTab === 'deleted' ? 'bg-white text-red-600 shadow-[0_0.4vw_1vw_rgba(0,0,0,0.3)]' : 'hover:bg-white/30 hover:scale-[1.02]'
+              }`}>
+                🗑️ Deleted ({deletedInvoices.length})
+              </button>
+            </div>
+          </div>
+          
+          {/* CONTENT */}
+          <div className="flex-1 overflow-y-auto p-[2vw] space-y-[1.5vw]">
+            {allInvoicesTab === 'active' ? (
+              Object.keys(groupedInvoices).length > 0 ? (
+                Object.values(groupedInvoices).map((group) => {
+                  const firstInvoice = group.invoices[0];
+                  
+                  return (
+                    <div key={group.orderId} className="bg-gradient-to-br from-blue-50/80 to-indigo-50/80 backdrop-blur-sm rounded-[1.2vw] p-[1.8vw] border border-blue-100 shadow-lg hover:shadow-xl transition-all">
+                      
+                      {/* 🔥 ORDER + PRODUCT HEADER */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[1.2vw] mb-[1.5vw] pb-[1.2vw] border-b border-blue-200">
+                        
+                        {/* 🏢 Order Info */}
+                        <div className="flex items-center gap-[0.8vw]">
+                          <div className="w-[2.2vw] h-[2.2vw] bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md border-[0.2vw] border-white">
+                            <svg className="w-[1.2vw] h-[1.2vw] text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-[1.1vw] font-black text-gray-900 leading-tight">
+                              <span className="text-[0.9vw] font-normal text-gray-600 mr-[0.4vw]">#</span>
+                              {group.orderNumber}
+                            </h3>
+                            <p className="text-[0.85vw] text-gray-700 font-semibold bg-blue-100 px-[0.7vw] py-[0.2vw] rounded-full inline-block mt-[0.1vw]">
+                              {group.company}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* 📦 Product Details */}
+                        <div className="lg:col-span-2">
+                          <div className="flex flex-wrap items-center gap-[0.8vw] bg-gradient-to-r from-emerald-50 to-green-50 rounded-[0.8vw] p-[1vw] border border-emerald-200">
+                            <div className="w-[1.8vw] h-[1.8vw] bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+                              <svg className="w-[1vw] h-[1vw] text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 4a1 1 0 000 2v8a2 2 0 002 2h10a2 2 0 002-2V6a1 1 0 100-2H3z"/>
+                              </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[0.85vw] font-bold text-emerald-800 truncate">
+                                {firstInvoice.productName || firstInvoice.product?.productName || 'Product Details'}
+                              </p>
+                              <p className="text-[0.75vw] text-emerald-700 flex flex-wrap gap-[0.3vw] items-center">
+                                <span className="inline-flex items-center gap-[0.2vw] bg-white px-[0.5vw] py-[0.1vw] rounded text-[0.65vw]">
+                                  📏 {firstInvoice.size || firstInvoice.product?.size || 'N/A'}
+                                </span>
+                                <span className="inline-flex items-center gap-[0.2vw] bg-white px-[0.5vw] py-[0.1vw] rounded text-[0.65vw]">
+                                  🏷️ {firstInvoice.imlName || firstInvoice.product?.imlName || 'N/A'}
+                                </span>
+                                <span className="inline-flex items-center gap-[0.2vw] bg-white px-[0.5vw] py-[0.1vw] rounded text-[0.65vw]">
+                                  {firstInvoice.imlType || firstInvoice.product?.imlType || 'N/A'}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 💰 TOTALS */}
+                      <div className="flex justify-between items-center mb-[1.5vw] pt-[1vw] border-t border-blue-200">
+                        <span className="text-[0.8vw] text-gray-500">Total • {group.invoices.length} invoice{group.invoices.length > 1 ? 's' : ''}</span>
+                        <div className="text-[1.4vw] font-black text-emerald-600 bg-gradient-to-r from-emerald-100 to-emerald-200 px-[1vw] py-[0.3vw] rounded-[0.7vw]">
+                          ₹{Math.round(group.totalAmount).toLocaleString()}
+                        </div>
+                      </div>
+                      
+                      {/* 📋 INVOICE CARDS */}
+                      <div className="grid grid-cols-1 gap-[1vw]">
+                        {group.invoices.map((invoice) => (
+                          <div key={invoice.id} className="group bg-white/90 backdrop-blur-sm rounded-[0.9vw] p-[1.3vw] shadow-md border border-gray-100 hover:shadow-xl hover:-translate-y-[0.1vw] transition-all duration-200 hover:border-blue-200 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50">
+                            <div className="flex items-start justify-between">
+                              
+                              {/* Invoice Info */}
+                              <div className="flex-1 min-w-0 pr-[1vw]">
+                                <div className="flex items-start gap-[0.6vw] mb-[0.5vw]">
+                                  <div className="w-[1.6vw] h-[1.6vw] bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-sm mt-[0.1vw] flex-shrink-0">
+                                    <svg className="w-[0.9vw] h-[0.9vw] text-white" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-[0.9vw] text-gray-900 truncate leading-tight">
+                                      {invoice.invoiceNo || `INV-${invoice.id?.slice(-6) || 'XXXXXX'}`}
+                                    </h4>
+                                    <p className="text-[0.75vw] text-gray-500 flex items-center gap-[0.3vw]">
+                                      📅 {new Date(invoice.invoiceDate || invoice.createdAt || Date.now()).toLocaleDateString('en-IN')}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-[0.4vw] mb-[0.6vw]">
+                                  <div className="text-[0.95vw] font-bold text-emerald-600 flex items-baseline gap-[0.2vw]">
+                                    <span>₹</span>
+                                    <span>{parseFloat(invoice.amount || invoice.total || 0).toLocaleString()}</span>
+                                  </div>
+                                  
+                                  <p className="text-[0.7vw] text-gray-600 line-clamp-2 leading-relaxed">
+                                    {invoice.reason || invoice.remarks || invoice.description || 'No description'}
+                                  </p>
+                                </div>
+                                
+                                <div className={`inline-flex px-[0.6vw] py-[0.25vw] rounded-full text-[0.65vw] font-semibold shadow-sm border ${
+                                  invoice.status === 'Generated' 
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                                    : invoice.status?.includes('Pending') || invoice.status === 'Pending'
+                                    ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                    : 'bg-blue-100 text-blue-800 border-blue-200'
+                                }`}>
+                                  {invoice.status || 'Active'}
+                                </div>
+                              </div>
+                              
+                              {/* Delete Button */}
+                              <button
+                                onClick={() => handleDeleteConfirm(invoice.id, group.orderId, group.orderNumber, invoice)}
+                                className="text-red-400 hover:text-red-600 hover:scale-110 text-[1.1vw] font-bold p-[0.4vw] rounded-full hover:bg-red-50 transition-all duration-200 opacity-0 group-hover:opacity-100 shadow-sm ml-[0.5vw] flex-shrink-0"
+                                title="Delete Invoice"
+                              >
+                                <svg className="w-[1vw] h-[1vw]" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a1 1 0 011-1h12a1 1 0 110 2H5a1 1 0 01-1-1zM3 10a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm10 1a1 1 0 100-2H7a1 1 0 100 2h6z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-[5vw]">
+                  <div className="w-[7vw] h-[7vw] mx-auto mb-[2vw] flex items-center justify-center rounded-2xl bg-gray-100 shadow-lg">
+                    <svg className="w-[3.5vw] h-[3.5vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[1.3vw] font-bold text-gray-900 mb-[0.5vw]">No Active Invoices</h3>
+                  <p className="text-[0.9vw] text-gray-500">All invoices processed or deleted.</p>
+                </div>
+              )
+            ) : (
+              // Deleted tab (simplified)
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[1.2vw]">
+                {deletedInvoices.map((invoice) => (
+                  <div key={invoice.id} className="bg-gradient-to-br from-rose-50/80 to-red-50/80 backdrop-blur-sm border border-red-200 rounded-[1vw] p-[1.5vw]">
+                    <h4 className="font-bold text-[1vw] text-red-800 mb-[0.5vw]">{invoice.invoiceNo}</h4>
+                    <p className="text-[1.1vw] font-bold text-red-700">₹{parseFloat(invoice.amount || 0).toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* Footer */}
+          <div className="p-[1.8vw] border-t border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <button 
+              onClick={() => setAllInvoicesModal({ isOpen: false, invoices: [], deletedInvoices: [] })}
+              className="px-[4vw] py-[1.2vw] bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-[1.5vw] font-bold text-[1vw] shadow-lg hover:shadow-xl transition-all duration-200 ml-auto"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 🔥 DELETE CONFIRM MODAL - COMPACT */}
+      {deleteConfirm.isOpen && (
+        <div className="fixed inset-0 bg-black/75 z-[50020] flex items-center justify-center p-[2vw]">
+          <div className="bg-gradient-to-br from-rose-50 via-red-50 to-red-100 border-[0.25vw] border-red-300 rounded-[2vw] w-[45vw] max-w-[45vw] p-[2.5vw] shadow-2xl">
+            <div className="flex items-center justify-between mb-[1.8vw]">
+              <div className="flex items-center gap-[0.8vw]">
+                <div className="w-[2vw] h-[2vw] bg-red-500 rounded-full flex items-center justify-center shadow-lg">
+                  <svg className="w-[1.1vw] h-[1.1vw] text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <h2 className="text-[1.4vw] font-black text-red-800">Confirm Delete</h2>
+              </div>
+              <button
+                onClick={() => setDeleteConfirm({ isOpen: false, invoiceId: null, orderId: null, orderNumber: '', invoiceDetails: null })}
+                className="text-[2vw] font-bold text-gray-500 hover:text-gray-900 hover:rotate-90 transition-all"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-[1.2vw] mb-[2vw]">
+              <div className="bg-red-50 border-[0.15vw] border-red-200 rounded-[1.2vw] p-[1.8vw]">
+                <p className="text-[0.95vw] text-red-700 font-semibold mb-[1vw]">
+                  This action will permanently delete the invoice:
+                </p>
+                <div className="space-y-[0.6vw] text-[0.9vw] text-red-600">
+                  <div className="flex items-center gap-[0.5vw]">
+                    <span className="font-black">📄</span>
+                    <span>{deleteConfirm.invoiceDetails?.invoiceNo || 'Invoice'}</span>
+                  </div>
+                  <div className="flex items-center gap-[0.5vw]">
+                    <span className="font-black">📦</span>
+                    <span>{deleteConfirm.orderNumber}</span>
+                  </div>
+                  <div className="flex items-center gap-[0.5vw]">
+                    <span className="font-black">💰</span>
+                    <span>₹{parseFloat(deleteConfirm.invoiceDetails?.amount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-[0.6vw] p-[1vw] bg-amber-50 border border-amber-200 rounded-[0.8vw]">
+                <svg className="w-[1.1vw] h-[1.1vw] text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <p className="text-[0.85vw] font-medium text-amber-800">
+                  This action cannot be undone!
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-[1.2vw] justify-end pt-[1vw] border-t border-red-200">
+              <button
+                onClick={() => setDeleteConfirm({ isOpen: false, invoiceId: null, orderId: null, orderNumber: '', invoiceDetails: null })}
+                className="flex-1 px-[2.5vw] py-[1vw] bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-[1vw] font-bold text-[0.95vw] shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-[0.5vw]"
+              >
+                <svg className="w-[1.1vw] h-[1.1vw]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
+                </svg>
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="flex-1 px-[2.5vw] py-[1vw] bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-[1vw] font-bold text-[0.95vw] shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-[0.5vw]"
+              >
+                <svg className="w-[1.1vw] h-[1.1vw]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+
+
 
   // Check if order has remaining labels
   const hasRemainingLabels = (order) => {
@@ -4782,45 +6848,25 @@ export default function OrdersManagement2() {
           {viewMode === "all" && (
             <>
               <div className="flex gap-[1vw]">
-                <button
-                  onClick={() => {
-                    // Get ALL invoices from ALL orders (deleted order invoices)
-                    const allInvoices = [];
-                    const ordersData = JSON.parse(
-                      localStorage.getItem(STORAGE_KEY) || "[]",
-                    );
+                <button 
+  onClick={() => {
+    // 🔥 Collect ALL invoices + filter deleted ones
+    const allInvoices = [];
+    orders.forEach(order => {
+      order.invoices?.forEach(inv => allInvoices.push({ ...inv, orderNumber: order.orderNumber }));
+    });
+    const deletedInvoices = allInvoices.filter(inv => 
+      inv.reason?.includes('Deleted') || 
+      inv.productDetails?.productConfirmDelete
+    );
+    
+    setAllInvoicesModal({ isOpen: true, invoices: allInvoices, deletedInvoices });
+  }}
+  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
+>
+  📋 All Invoices (Active + Deleted)
+</button>
 
-                    ordersData.forEach((order) => {
-                      if (order.invoices && order.invoices.length > 0) {
-                        order.invoices.forEach((invoice) => {
-                          // ✅ Filter for deleted order invoices (reason: "Order Deleted")
-                          if (
-                            invoice.reason === "Order Deleted" ||
-                            invoice.remarks?.includes("deletion")
-                          ) {
-                            allInvoices.push({
-                              ...invoice,
-                              orderNumber: order.orderNumber || "Deleted Order",
-                            });
-                          }
-                        });
-                      }
-                    });
-
-                    setDeletedOrderInvoicesModal({
-                      isOpen: true,
-                      orderId: null,
-                      orderNumber: "All Deleted Orders",
-                      invoices: allInvoices.sort(
-                        (a, b) =>
-                          new Date(b.invoiceDate) - new Date(a.invoiceDate),
-                      ), // Latest first
-                    });
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
-                >
-                  📋 All Invoices
-                </button>
                 <button
                   onClick={handleNewOrder}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
@@ -5139,14 +7185,78 @@ export default function OrdersManagement2() {
                                         </>
                                       )}
                                       {/* {!hasMovedToPurchase(order) && ( */}
-                                      <button
+                                      {/* <button
                                         onClick={() =>
                                           handleDeleteOrder(order.id)
                                         }
                                         className="px-[1vw] py-[.35vw] cursor-pointer bg-red-600 text-white rounded hover:bg-red-700 text-[.8vw] font-medium transition-all"
                                       >
                                         Delete
-                                      </button>
+                                      </button> */}
+                                     <button 
+  onClick={() => {
+    if (window.confirm("Do you want to send a delete request to the admin for this product?")) {
+      // 🔥 CURRENT 'order' object is ALWAYS available here
+      const firstActiveProduct = order?.products?.find(p => !p?.productDeleted);
+      
+      if (!firstActiveProduct) {
+        alert("❌ No active products to delete!");
+        return;
+      }
+      
+      // 🔥 STEP 1: Update THIS order only
+      const updatedOrder = {
+        ...order,
+        products: order.products.map(p =>
+          p.id === firstActiveProduct.id
+            ? { ...p, productDeleted: true, deleteRequestSent: true }
+            : p
+        )
+      };
+      
+      // 🔥 STEP 2: Replace order in parent orders (let React handle state)
+      const tempOrders = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const finalOrders = tempOrders.map(o => o.id === order.id ? updatedOrder : o);
+      
+      // 🔥 STEP 3: Invoice
+      
+
+        const finalOrderWithInvoice = {
+          ...updatedOrder,
+          invoices: [
+            ...(updatedOrder.invoices || []),
+            {
+              id: `DEL-REQ-${Date.now()}`,
+              productId: firstActiveProduct.id,
+              productName: `${firstActiveProduct.productName} (${firstActiveProduct.size})`,
+              orderNumber: order.orderNumber,
+              invoiceNo: "",
+              amount: firstActiveProduct.budget || 0,
+              reason: "Delete Request Sent ✅",
+              status: "Pending Admin Review",
+              createdAt: new Date().toISOString()
+            }
+          ]
+        };
+        
+        const finalOrdersWithInvoice = tempOrders.map(o => 
+          o.id === order.id ? finalOrderWithInvoice : o
+        );
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(finalOrdersWithInvoice));
+      
+      
+      // 🔥 REFRESH
+      window.dispatchEvent(new Event('ordersUpdated'));
+      alert("✅ Delete request sent! Product hidden + invoice created.");
+    }
+  }}
+  className="px-[.75vw] py-[.5vw] bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:shadow-lg transition-all text-[1vw]"
+>
+  Send Delete Request
+</button>
+
+
                                       {/* )} */}
                                       {isOrderDesignApproved(order) &&
                                         !isOrderMovedToPurchase(order) && (
@@ -5473,11 +7583,13 @@ export default function OrdersManagement2() {
                                                               </>
                                                             )}
                                                           {product.orderStatus ===
-                                                            "Artwork Pending" || product.orderStatus === "Artwork Approved" && (
+                                                            "Artwork Pending" ||
+                                                            (product.orderStatus ===
+                                                              "Artwork Approved" && (
                                                               <>
                                                                 <button
                                                                   onClick={() =>
-                                                                    handleChangeRequest(
+                                                                    handleEditRequest(
                                                                       order,
                                                                       product,
                                                                     )
@@ -5487,7 +7599,7 @@ export default function OrdersManagement2() {
                                                                   Edit
                                                                 </button>
                                                               </>
-                                                            )}
+                                                            ))}
                                                           {product.changeRequests &&
                                                             product
                                                               .changeRequests
@@ -5588,6 +7700,9 @@ export default function OrdersManagement2() {
 
       <ProductionAllocationModal />
       <ProductionHistoryModal />
+      <ProductDeleteConfirmModal />
+      <AllInvoicesModal />
+
 
       {changeRequestModal.isOpen && <ChangeRequestModal />}
       {viewRequestModal.isOpen && <ViewRequestModal />}
@@ -5681,6 +7796,107 @@ function Input({
         {...(type === "number" ? { min: "0" } : {})}
         className="w-full text-[.8vw] px-[0.75vw] py-[0.45vw] border border-gray-300 bg-white rounded-[0.5vw] text-[0.85vw] outline-none box-border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
       />
+    </div>
+  );
+}
+
+function DesignPreview({ file, productId, pdfPreviews, setPreviewModal }) {
+  return (
+    <div className="p-[1vw] bg-gray-50 rounded-[0.5vw] border-2 border-gray-300 h-full relative">
+      <p className="text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
+        Preview:
+      </p>
+
+      {file?.type === "application/pdf" ? (
+        <div className="mb-[1vw]">
+          {pdfPreviews[productId] ? (
+            <img
+              src={pdfPreviews[productId]}
+              alt="PDF Preview"
+              className="w-full h-auto border border-gray-300 rounded"
+              style={{
+                maxHeight: "150px",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 bg-gray-200 rounded">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+              <p className="text-gray-500 text-0.8vw">Generating preview...</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        file?.type?.startsWith("image/") && (
+          <img
+            src={URL.createObjectURL(file)}
+            alt="Design Preview"
+            className="w-full h-auto mb-1vw border border-gray-300 rounded"
+            style={{
+              maxHeight: "9vw",
+              objectFit: "contain",
+            }}
+          />
+        )
+      )}
+
+      <div className="mt-2">
+        <div className="flex items-center justify-between text-0.75vw">
+          <span className="text-gray-600 truncate pr-2">{file?.name}</span>
+        </div>
+        <div className="flex items-center justify-between text-0.7vw mt-1">
+          <span className="text-gray-500">
+            {(file?.size / 1024).toFixed(2)} KB
+          </span>
+          <span
+            className={`px-2 py-0.5 rounded text-0.65vw font-medium ${
+              file?.type === "application/pdf"
+                ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {file?.type === "application/pdf" ? "PDF" : "Image"}
+          </span>
+        </div>
+      </div>
+      <button
+        onClick={() => {
+          let fileUrl = null;
+
+          if (file) {
+            fileUrl = URL.createObjectURL(file);
+          }
+
+          setPreviewModal({
+            isOpen: true,
+            type: file?.type === "application/pdf" ? "pdf" : "image",
+            path: fileUrl,
+            name: file?.name,
+          });
+        }}
+        className="px-[1vw] py-[0.4vw] bg-green-600 text-white rounded-[0.4vw] hover:bg-green-700 font-medium text-[0.75vw] transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-[0.3vw] justify-center ml-[auto] mt-[.75vw] absolute top-[-.30vw] right-[1vw]"
+      >
+        <svg
+          className="w-[0.9vw] h-[0.9vw]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+          />
+        </svg>
+        Preview
+      </button>
     </div>
   );
 }

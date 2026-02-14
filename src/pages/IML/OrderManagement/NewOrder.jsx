@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useCallback } from 'react';  // Add this import at top
+import { useCallback } from "react"; // Add this import at top
 import { RgbaColorPicker } from "react-colorful";
 import * as pdfjsLib from "pdfjs-dist";
 
@@ -9,7 +9,7 @@ import design3PDF from "../../../assets/pdf/design3.pdf";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
+  import.meta.url,
 ).toString();
 
 // Dummy company data
@@ -76,7 +76,6 @@ const PaymentModal = ({
               Record Payment
             </h3>
 
-            
             {bulkPayment.paymentType === "advance" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-[2vw]">
@@ -264,7 +263,7 @@ const PaymentModal = ({
                           {Math.max(
                             calculateTotals().balance -
                               parseFloat(bulkPayment.amount || 0),
-                            0
+                            0,
                           ).toFixed(2)}
                         </span>
                       </div>
@@ -350,14 +349,13 @@ export default function NewOrder({
   const imlNameRefs = useRef({});
 
   const [isFormValid, setIsFormValid] = useState(false);
-  const [selectedPaymentType, setSelectedPaymentType] = useState('advance'); // Default
+  const [selectedPaymentType, setSelectedPaymentType] = useState("advance"); // Default
 
   const [highlightedErrors, setHighlightedErrors] = useState({});
-  const [toastMessage, setToastMessage] = useState('');
+  const [toastMessage, setToastMessage] = useState("");
   const [showToast, setShowToast] = useState(false);
-const [currentErrorStep, setCurrentErrorStep] = useState(0);
-const [errorGroups, setErrorGroups] = useState([]);
-
+  const [currentErrorStep, setCurrentErrorStep] = useState(0);
+  const [errorGroups, setErrorGroups] = useState([]);
 
   // Product size options mapping
   const PRODUCT_SIZE_OPTIONS = {
@@ -370,37 +368,40 @@ const [errorGroups, setErrorGroups] = useState([]);
   };
 
   // Add after PRODUCT_SIZE_OPTIONS - PERFECT MATCH
-const IML_TYPE_MAP = {
-  // Rectangle (all sizes)
-  Rectangle: { '500ml': 'LID', '650ml': 'LID', '750ml': 'LID' },
-  
-  // Round Square (all sizes)  
-  'Round Square': { '450ml': 'TUB', '500ml': 'TUB' },
-  
-  // Sweet Boxes (all sizes)
-  'Sweet Box': { '250gms': 'LID & TUB', '500gms': 'LID & TUB', '1kg': 'LID & TUB' },
-  'Sweet Box TE': { 'TE 250gms': 'LID & TUB', 'TE 500gms': 'LID & TUB' },
-  
-  // Glass Round
-  'Glass Round': { '250ml': 'TUB' },
-  
-  // Round (size-specific)
-  Round: { 
-    '120ml': 'TUB', 
-    '200ml': 'LID & TUB', 
-    '250ml': 'TUB', 
-    '300ml': 'TUB', 
-    '500ml': 'TUB', 
-    '750ml': 'TUB', 
-    '1000ml': 'TUB'
-  }
-};
+  const IML_TYPE_MAP = {
+    // Rectangle (all sizes)
+    Rectangle: { "500ml": "LID", "650ml": "LID", "750ml": "LID" },
 
-// Super simple lookup function
-const getAutoImlType = (productName, size) => {
-  return IML_TYPE_MAP[productName]?.[size] || 'TUB';
-};
+    // Round Square (all sizes)
+    "Round Square": { "450ml": "TUB", "500ml": "TUB" },
 
+    // Sweet Boxes (all sizes)
+    "Sweet Box": {
+      "250gms": "LID & TUB",
+      "500gms": "LID & TUB",
+      "1kg": "LID & TUB",
+    },
+    "Sweet Box TE": { "TE 250gms": "LID & TUB", "TE 500gms": "LID & TUB" },
+
+    // Glass Round
+    "Glass Round": { "250ml": "TUB" },
+
+    // Round (size-specific)
+    Round: {
+      "120ml": "TUB",
+      "200ml": "LID & TUB",
+      "250ml": "TUB",
+      "300ml": "TUB",
+      "500ml": "TUB",
+      "750ml": "TUB",
+      "1000ml": "TUB",
+    },
+  };
+
+  // Super simple lookup function
+  const getAutoImlType = (productName, size) => {
+    return IML_TYPE_MAP[productName]?.[size] || "TUB";
+  };
 
   const OLD_DESIGN_FILES = [
     { id: 1, name: "Design 1", path: design1PDF, type: "pdf" },
@@ -452,12 +453,12 @@ const getAutoImlType = (productName, size) => {
       approvedDate: getTodayDate(),
       designSharedMail: false,
       designStatus: "approved",
-      orderStatus: "Artwork Approved",  
+      orderStatus: "Artwork Approved",
       showLidColorPicker: false,
       showTubColorPicker: false,
       designType: "new",
       moveToPurchase: false,
-
+      singleImlDesign: false,
       isCollapsed: false,
     },
   ]);
@@ -518,7 +519,7 @@ const getAutoImlType = (productName, size) => {
         existingOrder.orderEstimate || {
           estimatedNumber: "",
           estimatedValue: 0,
-        }
+        },
       ); // NEW
     }
   }, [existingOrder]);
@@ -543,7 +544,7 @@ const getAutoImlType = (productName, size) => {
     }
 
     const filtered = DUMMY_COMPANIES.filter((company) =>
-      company.company.toLowerCase().includes(value.toLowerCase())
+      company.company.toLowerCase().includes(value.toLowerCase()),
     );
     setFilteredCompanies(filtered);
     setShowSuggestions(filtered.length > 0);
@@ -590,11 +591,39 @@ const getAutoImlType = (productName, size) => {
   //     products.map((p) => (p.id === id ? { ...p, [field]: value } : p))
   //   );
   // };
-   const updateProduct = useCallback((id, field, value) => {
-  setProducts(prevProducts => prevProducts.map(p => 
-    p.id === id ? { ...p, [field]: value } : p
-  ));
-}, []);
+  const updateProduct = useCallback((id, field, value) => {
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
+    );
+  }, []);
+
+  // Add this new function after updateProduct
+  const updateProductWithDesignStatus = useCallback((id, field, value) => {
+    setProducts(prevProducts => {
+      const newProducts = prevProducts.map(p => {
+        if (p.id === id) {
+          const updates = { [field]: value };
+          
+          // ✅ If selecting an existing design, auto-approve
+          if ((field === 'lidSelectedOldDesign' || field === 'tubSelectedOldDesign') && value) {
+            updates.designStatus = 'approved';
+            updates.orderStatus = 'Artwork Approved';
+            updates.approvedDate = getTodayDate();
+          }
+          
+          return { ...p, ...updates };
+        }
+        return p;
+      });
+      
+      // ✅ DEBUG: Log the UPDATED product to verify state change
+      const updatedProduct = newProducts.find(p => p.id === id);
+      console.log('Updated Product:', updatedProduct);
+      console.log(`Field ${field} set to:`, value);
+      
+      return newProducts;
+    });
+  }, []);
 
   // UPDATED: Handle quantities for LID & TUB separately
   const updateQuantity = (id, type, field, value) => {
@@ -612,19 +641,21 @@ const getAutoImlType = (productName, size) => {
           return updated;
         }
         return p;
-      })
+      }),
     );
   };
 
   // UPDATED: Validate duplicate products
   const isDuplicateProduct = (productName, size, imlType, currentId) => {
-    console.log(`productName: ${productName}\n size: ${size}\n imlType: ${imlType}`);
+    console.log(
+      `productName: ${productName}\n size: ${size}\n imlType: ${imlType}`,
+    );
     return products.some(
       (p) =>
         p.id !== currentId && // ✅ critical line
         p.productName === productName &&
         p.size === size &&
-        p.imlType === imlType
+        p.imlType === imlType,
     );
   };
 
@@ -634,7 +665,7 @@ const getAutoImlType = (productName, size) => {
     setProducts(products.map((p) => ({ ...p, isCollapsed: true })));
 
     const newProduct = {
-      id: `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,  // UUID-like
+      id: `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // UUID-like
       productName: "",
       size: "",
       imlName: "",
@@ -655,12 +686,12 @@ const getAutoImlType = (productName, size) => {
       approvedDate: getTodayDate(),
       designSharedMail: false,
       designStatus: "approved",
-      orderStatus: "Artwork Approved",  
+      orderStatus: "Artwork Approved",
       showLidColorPicker: false,
       showTubColorPicker: false,
       designType: "new",
       moveToPurchase: false,
-
+      singleImlDesign: false,
       isCollapsed: false,
     };
     setProducts([...products, newProduct]);
@@ -668,24 +699,23 @@ const getAutoImlType = (productName, size) => {
 
   // Remove product
   const removeProduct = useCallback((targetId) => {
-  setProducts((prevProducts) => {
-    const newProducts = prevProducts.filter(p => p.id !== targetId);
-    console.log(`Removed product ${targetId}, ${newProducts.length} left`); // Debug
+    setProducts((prevProducts) => {
+      const newProducts = prevProducts.filter((p) => p.id !== targetId);
+      console.log(`Removed product ${targetId}, ${newProducts.length} left`); // Debug
 
-    setErrorGroups([]);
-    setCurrentErrorStep(0);
+      setErrorGroups([]);
+      setCurrentErrorStep(0);
 
-
-    return newProducts;
-  });
-}, []);
+      return newProducts;
+    });
+  }, []);
 
   // Toggle collapse state
   const toggleCollapse = (id) => {
     setProducts(
       products.map((p) =>
-        p.id === id ? { ...p, isCollapsed: !p.isCollapsed } : p
-      )
+        p.id === id ? { ...p, isCollapsed: !p.isCollapsed } : p,
+      ),
     );
   };
 
@@ -702,7 +732,7 @@ const getAutoImlType = (productName, size) => {
     }
 
     const filtered = COLOR_OPTIONS.filter((color) =>
-      color.toLowerCase().includes(value.toLowerCase())
+      color.toLowerCase().includes(value.toLowerCase()),
     );
 
     setFilteredLidColors(filtered);
@@ -726,7 +756,7 @@ const getAutoImlType = (productName, size) => {
     }
 
     const filtered = COLOR_OPTIONS.filter((color) =>
-      color.toLowerCase().includes(value.toLowerCase())
+      color.toLowerCase().includes(value.toLowerCase()),
     );
 
     setFilteredTubColors(filtered);
@@ -813,7 +843,7 @@ const getAutoImlType = (productName, size) => {
     }
 
     const filtered = IML_NAME_OPTIONS.filter((name) =>
-      name.toLowerCase().includes(value.toLowerCase())
+      name.toLowerCase().includes(value.toLowerCase()),
     );
     setFilteredImlNames(filtered);
     setShowImlNameSuggestions({
@@ -976,7 +1006,7 @@ const getAutoImlType = (productName, size) => {
 
   useEffect(() => {
     const pdfDesigns = OLD_DESIGN_FILES.filter(
-      (design) => design.type === "pdf"
+      (design) => design.type === "pdf",
     );
 
     pdfDesigns.forEach((design) => {
@@ -1064,7 +1094,7 @@ const getAutoImlType = (productName, size) => {
   // Payment functions
   const hasPaymentRecord = (productId) => {
     return paymentRecords.some((record) =>
-      record.productIds.includes(productId)
+      record.productIds.includes(productId),
     );
   };
 
@@ -1097,7 +1127,7 @@ const getAutoImlType = (productName, size) => {
       if (!bulkPayment.method) {
         generalToast("Please fill in payment method for Advance payment");
         return;
-      } 
+      }
       if (!bulkPayment.amount) {
         generalToast("Please fill in amount for Advance payment");
         return;
@@ -1106,7 +1136,7 @@ const getAutoImlType = (productName, size) => {
         generalToast("Please enter remarks for Advance payment");
         return;
       }
-      
+
       if (!bulkPayment.file) {
         generalToast("Please upload a valid screenshot for Advance payment");
         return;
@@ -1118,7 +1148,7 @@ const getAutoImlType = (productName, size) => {
         generalToast("Please enter PO Details / Reference");
         return;
       }
-      
+
       if (!bulkPayment.file) {
         generalToast("Please upload a valid PO documennt for Advance payment");
         return;
@@ -1156,14 +1186,14 @@ const getAutoImlType = (productName, size) => {
 
   const getProductPayment = (productId) => {
     return paymentRecords.find((record) =>
-      record.productIds.includes(productId)
+      record.productIds.includes(productId),
     );
   };
 
   const calculateTotals = () => {
     const totalBudget = products.reduce(
       (sum, p) => sum + (parseFloat(p.budget) || 0),
-      0
+      0,
     );
 
     const totalPaid = paymentRecords
@@ -1171,7 +1201,7 @@ const getAutoImlType = (productName, size) => {
       .reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
     const productsWithPayment = new Set(
-      paymentRecords.flatMap((r) => r.productIds)
+      paymentRecords.flatMap((r) => r.productIds),
     ).size;
 
     const productsWithoutPayment = products.length - productsWithPayment;
@@ -1204,198 +1234,291 @@ const getAutoImlType = (productName, size) => {
   const [isManualTotal, setIsManualTotal] = useState(false);
 
   // NEW: Check if ANY product is approved
-const hasAnyApprovedProduct = () => {
-  return products.some(p => p.designStatus === 'approved');
-};
-
-// NEW: Check if has at least 1 payment record
-const hasPaymentRecord2 = () => {
-  return paymentRecords.length > 0;
-};
-
-
- const validateForm = useCallback(() => {
-  const groups = [];
-  
-  // Group 1: Contact (priority 0)
-  const contactErrors = [];
-  if (!contact.company?.trim()) contactErrors.push('Company Name');
-  if (!contact.contactName?.trim()) contactErrors.push('Contact Name');
-  if (!contact.phone?.trim()) contactErrors.push('Contact Number');
-  if (!contact.priority) contactErrors.push('Priority');
-  if (contactErrors.length > 0) {
-    groups.push({ step: 0, message: `Required - Contact Details: ${contactErrors.join(', ')}` });
-  }
-  
-  // Group 2: Order Estimate (priority 1)
-  const estimateErrors = [];
-  if (!orderEstimate.estimatedNumber) estimateErrors.push('Estimated Number');
-  if (!orderEstimate.estimatedValue || parseFloat(orderEstimate.estimatedValue) === 0) estimateErrors.push('Estimated Value');
-  if (estimateErrors.length > 0) {
-    groups.push({ step: 1, message: `Order Estimate: ${estimateErrors.join(', ')} required` });
-  }
-  
-  // Group 3: Products (priority 2)
-  const invalidProducts = products.filter((product, idx) => {
-    const hasImlName = product.imlName?.trim();
-    let hasDesign = true;
-    if (product.designStatus === 'approved') {
-      hasDesign = product.imlType === 'LID & TUB' ? !!product.lidDesignFile : (product.lidDesignFile || product.tubDesignFile);
-    }
-
-    let hasValidQty = false;
-    if (product.imlType === 'LID & TUB') {
-      hasValidQty = (product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0) ||
-                    (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
-    } else if (product.imlType === 'LID') {
-      hasValidQty = product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
-    } else if (product.imlType === 'TUB') {
-      hasValidQty = product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
-    }
-    
-  // Optional: Production Qty validation (require if LabelQty exists)
-    let hasValidProduction = true;
-    if (product.imlType === 'LID & TUB') {
-      hasValidProduction = (!product.lidLabelQty || product.lidProductionQty?.trim()) &&
-                          (!product.tubLabelQty || product.tubProductionQty?.trim());
-    } else if (product.imlType === 'LID') {
-      hasValidProduction = !product.lidLabelQty || product.lidProductionQty?.trim();
-    } else if (product.imlType === 'TUB') {
-      hasValidProduction = !product.tubLabelQty || product.tubProductionQty?.trim();
-    }
-  
-    return !product.productName || !product.size || !hasImlName || !hasDesign || !hasValidQty || !hasValidProduction;
-    // return !product.productName || !product.size || !hasImlName || !hasDesign;
-  });
-
-  if (invalidProducts.length > 0) {
-  // Build specific missing fields for each invalid product
-  const productErrors = invalidProducts.map(product => {
-    const missingFields = [];
-    
-    // Product Name
-    if (!product.productName) missingFields.push('Product Name');
-    
-    // Size  
-    if (!product.size) missingFields.push('Size');
-    
-    // IML Name
-    if (!product.imlName?.trim()) missingFields.push('IML Name');
-    
-    // Design (only if approved)
-    if (product.designStatus === 'approved') {
-      const hasDesign = product.imlType === 'LID & TUB' ? !!product.lidDesignFile : (product.lidDesignFile || product.tubDesignFile);
-      if (!hasDesign) missingFields.push('Design');
-    }
-    
-    // Label Order Qty (mandatory for all types)
-    let hasValidLabelQty = false;
-    if (product.imlType === 'LID & TUB') {
-      hasValidLabelQty = (product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0) ||
-                        (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
-    } else if (product.imlType === 'LID') {
-      hasValidLabelQty = product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
-    } else if (product.imlType === 'TUB') {
-      hasValidLabelQty = product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
-    }
-    if (!hasValidLabelQty) missingFields.push('Label Order Qty');
-    
-    // Production Qty (only if corresponding Label Qty exists)
-    if (product.imlType === 'LID & TUB') {
-      if ((product.lidLabelQty?.trim() && !product.lidProductionQty?.trim()) ||
-          (product.tubLabelQty?.trim() && !product.tubProductionQty?.trim())) {
-        missingFields.push('Production Qty');
-      }
-    } else if (product.imlType === 'LID') {
-      if (product.lidLabelQty?.trim() && !product.lidProductionQty?.trim()) {
-        missingFields.push('Production Qty');
-      }
-    } else if (product.imlType === 'TUB') {
-      if (product.tubLabelQty?.trim() && !product.tubProductionQty?.trim()) {
-        missingFields.push('Production Qty');
-      }
-    }
-    
-    return {
-      productIndex: products.indexOf(product) + 1,
-      fields: missingFields
-    };
-  });
-  
-  // Group by product and create message
-  const errorMessages = productErrors.map(err => 
-    `Required - Product #${err.productIndex}: ${err.fields.join(', ')}`
-  );
-  
-  groups.push({ 
-    step: 2, 
-    message: errorMessages.join('; ') 
-  });
-}
-
-  
-  // Group 4: Payment (priority 3)
-  const hasAnyApproved = products.some(p => p.designStatus === 'approved');
-  if (hasAnyApproved && paymentRecords.length === 0) {
-    groups.push({ step: 3, message: 'Payment: Record required for approved designs' });
-  }
-  
-  const isValid = groups.length === 0;
-  setErrorGroups(groups);
-  setIsFormValid(isValid);
-  
-  if (!isValid) {
-    setCurrentErrorStep(0); // Reset to first group
-  }
-  return isValid;
-}, [products, contact, orderEstimate, paymentRecords]);
-
-
-const handleValidateClick = () => {
-  const isValid = validateForm();
-  
-  if (isValid) {
-    submitForm();
-    return;
-  }
-  
-  // Show only current step's error
-  const freshErrorGroups = errorGroups; // Now updated by validateForm()
-  const currentError = freshErrorGroups[currentErrorStep];
-
-  if (!currentError) return;
-  
-  setToastMessage(currentError.message);
-  setShowToast(true);
-  setTimeout(() => setShowToast(false), 5000);
-  
-  // Scroll to relevant section
-  const scrolls = {
-    0: '[data-section="contact"]',      // Add data-section="contact" to contact div
-    1: '[data-section="estimate"]',     // Add to estimates div
-    2: '.products-list',                // Existing products container
-    3: '.payment-records'               // Payment table/section
+  const hasAnyApprovedProduct = () => {
+    return products.some((p) => p.designStatus === "approved");
   };
-  const target = document.querySelector(scrolls[currentError.step]);
-  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-};
 
+  // NEW: Check if has at least 1 payment record
+  const hasPaymentRecord2 = () => {
+    return paymentRecords.length > 0;
+  };
+
+  const validateForm = useCallback(() => {
+    const groups = [];
+
+    // Group 1: Contact (priority 0)
+    const contactErrors = [];
+    if (!contact.company?.trim()) contactErrors.push("Company Name");
+    if (!contact.contactName?.trim()) contactErrors.push("Contact Name");
+    if (!contact.phone?.trim()) contactErrors.push("Contact Number");
+    if (!contact.priority) contactErrors.push("Priority");
+    if (contactErrors.length > 0) {
+      groups.push({
+        step: 0,
+        message: `Required - Contact Details: ${contactErrors.join(", ")}`,
+      });
+    }
+
+    // Group 2: Order Estimate (priority 1)
+    const estimateErrors = [];
+    if (!orderEstimate.estimatedNumber) estimateErrors.push("Estimated Number");
+    if (
+      !orderEstimate.estimatedValue ||
+      parseFloat(orderEstimate.estimatedValue) === 0
+    )
+      estimateErrors.push("Estimated Value");
+    if (estimateErrors.length > 0) {
+      groups.push({
+        step: 1,
+        message: `Order Estimate: ${estimateErrors.join(", ")} required`,
+      });
+    }
+
+    // Group 3: Products (priority 2)
+    const invalidProducts = products.filter((product, idx) => {
+      const hasImlName = product.imlName?.trim();
+
+      let hasDesign = true;
+      if (product.designStatus === "approved") {
+        if (product.imlType === "LID & TUB") {
+          // ✅ FIXED: Check for the correct field names
+ const hasLidDesign = !!(product.lidDesignFile && product.lidDesignFile.size > 0) || !!product.lidSelectedOldDesign;
+  const hasTubDesign = !!(product.tubDesignFile && product.tubDesignFile.size > 0) || !!product.tubSelectedOldDesign;
+
+
+          console.log(`HAS LID DESIGN: ${hasLidDesign}`);
+          console.log(`LID DESIGN FILE: ${product.lidDesignFile}`);
+          console.log(`LID EXISTING DESIGN FILE: ${product.lidSelectedOldDesign}`);
+          console.log(`HAS TUB DESIGN: ${hasTubDesign}`);
+          console.log(`TUB DESIGN FILE: ${product.tubDesignFile}`);
+          console.log(`TUB EXISTING DESIGN FILE: ${product.tubSelectedOldDesign}`);
+          if (product.singleImlDesign) {
+            hasDesign = hasLidDesign || hasTubDesign;  
+          }
+          else {
+            hasDesign = hasLidDesign && hasTubDesign;  
+          }
+
+        } else if (product.imlType === "LID") {
+          hasDesign = !!(product.lidDesignFile && product.lidDesignFile.size > 0) || !!product.lidSelectedOldDesign;
+          console.log(`LID DESIGN FILE 2: ${product.lidDesignFile}`);
+          console.log(`LID EXISTING DESIGN FILE 2: ${product.lidSelectedOldDesign}`);
+        } else if (product.imlType === "TUB") {
+          hasDesign = !!(product.lidDesignFile && product.lidDesignFile.size > 0) || !!product.lidSelectedOldDesign;
+          console.log(`TUB DESIGN FILE 2: ${product.tubDesignFile}`);
+          console.log(`TUB EXISTING DESIGN FILE 2: ${product.tubSelectedOldDesign}`);
+        }
+      }
+
+      let hasValidQty = false;
+      if (product.imlType === "LID & TUB") {
+        hasValidQty =
+          (product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0) ||
+          (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
+      } else if (product.imlType === "LID") {
+        hasValidQty =
+          product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
+      } else if (product.imlType === "TUB") {
+        hasValidQty =
+          product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
+      }
+
+      let hasValidProduction = true;
+      if (product.imlType === "LID & TUB") {
+        hasValidProduction =
+          (!product.lidLabelQty || product.lidProductionQty?.trim()) &&
+          (!product.tubLabelQty || product.tubProductionQty?.trim());
+      } else if (product.imlType === "LID") {
+        hasValidProduction =
+          !product.lidLabelQty || product.lidProductionQty?.trim();
+      } else if (product.imlType === "TUB") {
+        hasValidProduction =
+          !product.tubLabelQty || product.tubProductionQty?.trim();
+      }
+
+      console.log(`Has design: ${hasDesign}`);
+
+      return (
+        !product.productName ||
+        !product.size ||
+        !hasImlName ||
+        !hasDesign ||
+        !hasValidQty ||
+        !hasValidProduction
+      );
+    });
+
+    if (invalidProducts.length > 0) {
+      // Build specific missing fields for each invalid product
+      const productErrors = invalidProducts.map((product) => {
+        const missingFields = [];
+
+        // Product Name
+        if (!product.productName) missingFields.push("Product Name");
+
+        // Size
+        if (!product.size) missingFields.push("Size");
+
+        // IML Name
+        if (!product.imlName?.trim()) missingFields.push("IML Name");
+
+        // Design (only if approved)
+        if (product.designStatus === "approved") {
+          let hasDesign = false;
+          let designMessage = "Design (upload new or select existing)";
+          if (product.imlType === "LID & TUB") {
+            const hasLidDesign =
+              !!product.lidDesignFile || !!product.lidSelectedOldDesign;
+            const hasTubDesign =
+              !!product.tubDesignFile || !!product.tubSelectedOldDesign;
+            if (product.singleImlDesign) {
+              hasDesign = hasLidDesign || hasTubDesign;  
+            }
+            else {
+              hasDesign = hasLidDesign && hasTubDesign;  
+              if (!hasDesign) {
+                designMessage = "Please select design for both LID & TUB";
+              }
+            }
+          } else if (product.imlType === "LID") {
+            hasDesign =
+              !!product.lidDesignFile || !!product.lidSelectedOldDesign;
+          } else if (product.imlType === "TUB") {
+            hasDesign =
+              !!product.tubDesignFile || !!product.tubSelectedOldDesign;
+          }
+          if (!hasDesign)
+            missingFields.push(designMessage);
+        }
+
+        // Label Order Qty (mandatory for all types)
+        let hasValidLabelQty = false;
+        if (product.imlType === "LID & TUB") {
+          hasValidLabelQty =
+            (product.lidLabelQty?.trim() &&
+              parseInt(product.lidLabelQty) > 0) ||
+            (product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0);
+        } else if (product.imlType === "LID") {
+          hasValidLabelQty =
+            product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
+        } else if (product.imlType === "TUB") {
+          hasValidLabelQty =
+            product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
+        }
+        if (!hasValidLabelQty) missingFields.push("Label Order Qty");
+
+        // Production Qty (only if corresponding Label Qty exists)
+        if (product.imlType === "LID & TUB") {
+          if (
+            (product.lidLabelQty?.trim() &&
+              !product.lidProductionQty?.trim()) ||
+            (product.tubLabelQty?.trim() && !product.tubProductionQty?.trim())
+          ) {
+            missingFields.push("Production Qty");
+          }
+        } else if (product.imlType === "LID") {
+          if (
+            product.lidLabelQty?.trim() &&
+            !product.lidProductionQty?.trim()
+          ) {
+            missingFields.push("Production Qty");
+          }
+        } else if (product.imlType === "TUB") {
+          if (
+            product.tubLabelQty?.trim() &&
+            !product.tubProductionQty?.trim()
+          ) {
+            missingFields.push("Production Qty");
+          }
+        }
+
+        return {
+          productIndex: products.indexOf(product) + 1,
+          fields: missingFields,
+        };
+      });
+
+      // Group by product and create message
+      const errorMessages = productErrors.map(
+        (err) =>
+          `Required - Product #${err.productIndex}: ${err.fields.join(", ")}`,
+      );
+
+      groups.push({
+        step: 2,
+        message: errorMessages.join("; "),
+      });
+    }
+
+    // Group 4: Payment (priority 3)
+    const hasAnyApproved = products.some((p) => p.designStatus === "approved");
+    if (hasAnyApproved && paymentRecords.length === 0) {
+      groups.push({
+        step: 3,
+        message: "Payment: Record required for approved designs",
+      });
+    }
+
+    const isValid = groups.length === 0;
+    setErrorGroups(groups);
+    setIsFormValid(isValid);
+
+    if (!isValid) {
+      setCurrentErrorStep(0); // Reset to first group
+    }
+    return isValid;
+  }, [products, contact, orderEstimate, paymentRecords]);
+
+  const handleValidateClick = () => {
+    const isValid = validateForm();
+
+    if (isValid) {
+      submitForm();
+      return;
+    }
+
+    // Show only current step's error
+    const freshErrorGroups = errorGroups; // Now updated by validateForm()
+    const currentError = freshErrorGroups[currentErrorStep];
+
+    if (!currentError) return;
+
+    setToastMessage(currentError.message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 5000);
+
+    // Scroll to relevant section
+    const scrolls = {
+      0: '[data-section="contact"]', // Add data-section="contact" to contact div
+      1: '[data-section="estimate"]', // Add to estimates div
+      2: ".products-list", // Existing products container
+      3: ".payment-records", // Payment table/section
+    };
+    const target = document.querySelector(scrolls[currentError.step]);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  useEffect(() => {
+    setErrorGroups([]);
+    setCurrentErrorStep(0);
+    setHighlightedErrors([]);
+    setIsFormValid(false);
+  }, [products]);
+
+  function generalToast(message) {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 5000);
+  }
+
+  // ✅ Only validate when explicitly needed, with a small delay
 useEffect(() => {
-  setErrorGroups([]);
-  setCurrentErrorStep(0);
-  setHighlightedErrors([]);
-  setIsFormValid(false);
-}, [products]); 
-
-function generalToast(message) {
-  setToastMessage(message);
-  setShowToast(true);
-  setTimeout(() => setShowToast(false), 5000);
-}
-
-
-useEffect(() => {
-  validateForm();
+  // Debounce validation to allow state to settle
+  const timeoutId = setTimeout(() => {
+    validateForm();
+  }, 500); // Small delay lets React finish state updates
+  
+  return () => clearTimeout(timeoutId);
 }, [products, contact, orderEstimate, paymentRecords, validateForm]);
 
   // auto set total estimated amount input field
@@ -1439,7 +1562,7 @@ useEffect(() => {
 
         <div className="px-[1.5vw] max-h-[65vh] overflow-auto">
           {/* Contact Details with Priority */}
-          <Section title="Contact Details">
+          <Section title="Contact Details" data_section="contact">
             <div className="grid grid-cols-5 gap-[1.5vw]">
               {/* Company Name with Autocomplete */}
               <div className="relative" ref={autocompleteRef}>
@@ -1617,8 +1740,8 @@ useEffect(() => {
                                       productName: e.target.value,
                                       size: "",
                                     }
-                                  : p
-                              )
+                                  : p,
+                              ),
                             );
                           }}
                           disabled={isProductLocked(product)}
@@ -1642,24 +1765,32 @@ useEffect(() => {
                                 product.productName,
                                 newSize,
                                 product.imlType,
-                                product.id 
+                                product.id,
                               )
                             ) {
                               alert(
-                                `This product combination (${product.productName} - ${newSize} - ${product.imlType}) already exists!`
+                                `This product combination (${product.productName} - ${newSize} - ${product.imlType}) already exists!`,
                               );
                               return;
                             }
                             updateProduct(product.id, "size", newSize);
 
-                            const autoImlType = getAutoImlType(product.productName, newSize);
-  
-                            setProducts(products.map(p =>
-                              p.id === product.id
-                                ? { ...p, size: newSize, imlType: autoImlType }
-                                : p
-                            ));
+                            const autoImlType = getAutoImlType(
+                              product.productName,
+                              newSize,
+                            );
 
+                            setProducts(
+                              products.map((p) =>
+                                p.id === product.id
+                                  ? {
+                                      ...p,
+                                      size: newSize,
+                                      imlType: autoImlType,
+                                    }
+                                  : p,
+                              ),
+                            );
                           }}
                           disabled={isProductLocked(product)}
                         />
@@ -1670,10 +1801,19 @@ useEffect(() => {
                           placeholder="Select Type"
                           // options={["LID", "TUB", "LID & TUB"]}
                           options={
-                              getAutoImlType(product.productName, product.size) === 'LID & TUB'
-                                ? ['LID', 'TUB', 'LID & TUB'] : getAutoImlType(product.productName, product.size) === 'LID' ? ['LID'] : // ALWAYS available for these products
-                                ['TUB']               // Limited for others
-                            }                          value={product.imlType}
+                            getAutoImlType(
+                              product.productName,
+                              product.size,
+                            ) === "LID & TUB"
+                              ? ["LID", "TUB", "LID & TUB"]
+                              : getAutoImlType(
+                                    product.productName,
+                                    product.size,
+                                  ) === "LID"
+                                ? ["LID"] // ALWAYS available for these products
+                                : ["TUB"] // Limited for others
+                          }
+                          value={product.imlType}
                           onChange={(e) => {
                             const newImlType = e.target.value;
                             // Check for duplicates
@@ -1684,11 +1824,11 @@ useEffect(() => {
                                 product.productName,
                                 product.size,
                                 newImlType,
-                                product.id 
+                                product.id,
                               )
                             ) {
                               alert(
-                                `This product combination (${product.productName} - ${product.size} - ${newImlType}) already exists!`
+                                `This product combination (${product.productName} - ${product.size} - ${newImlType}) already exists!`,
                               );
                               return;
                             }
@@ -1701,8 +1841,8 @@ useEffect(() => {
                                       showLidColorPicker: false,
                                       showTubColorPicker: false,
                                     }
-                                  : p
-                              )
+                                  : p,
+                              ),
                             );
                           }}
                           disabled={isProductLocked(product)}
@@ -1860,7 +2000,7 @@ useEffect(() => {
                                 updateProduct(
                                   product.id,
                                   "lidColor",
-                                  e.target.value
+                                  e.target.value,
                                 )
                               }
                               className="w-full px-0.75vw py-0.45vw border border-gray-300 bg-white rounded-0.5vw text-0.85vw outline-none box-border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1885,7 +2025,7 @@ useEffect(() => {
                                 updateProduct(
                                   product.id,
                                   "tubColor",
-                                  e.target.value
+                                  e.target.value,
                                 )
                               }
                               className="w-full px-0.75vw py-0.45vw border border-gray-300 bg-white rounded-0.5vw text-0.85vw outline-none box-border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -1918,7 +2058,7 @@ useEffect(() => {
                                     product.id,
                                     "lid",
                                     "LabelQty",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                               />
@@ -1932,7 +2072,7 @@ useEffect(() => {
                                     product.id,
                                     "lid",
                                     "ProductionQty",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                               />
@@ -1963,7 +2103,7 @@ useEffect(() => {
                                     product.id,
                                     "tub",
                                     "LabelQty",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                               />
@@ -1977,7 +2117,7 @@ useEffect(() => {
                                     product.id,
                                     "tub",
                                     "ProductionQty",
-                                    e.target.value
+                                    e.target.value,
                                   )
                                 }
                               />
@@ -2016,7 +2156,7 @@ useEffect(() => {
                                 product.id,
                                 type,
                                 "LabelQty",
-                                e.target.value
+                                e.target.value,
                               );
                             }}
                           />
@@ -2041,7 +2181,7 @@ useEffect(() => {
                                 product.id,
                                 type,
                                 "ProductionQty",
-                                e.target.value
+                                e.target.value,
                               );
                             }}
                           />
@@ -2073,11 +2213,15 @@ useEffect(() => {
                         {isFromSuggestion && (
                           <button
                             onClick={() =>
+                            {
                               updateProduct(
                                 product.id,
                                 "designType",
-                                "existing"
-                              )
+                                "existing",
+                              );
+                              updateProduct(product.id, "lidDesignFile", null);
+                              updateProduct(product.id, "tubDesignFile", null);
+                            }
                             }
                             className={`px-[2vw] py-[0.6vw] rounded-[0.4vw] cursor-pointer text-[0.85vw] font-medium transition-all duration-200 ${
                               product.designType === "existing"
@@ -2090,7 +2234,13 @@ useEffect(() => {
                         )}
                         <button
                           onClick={() =>
-                            updateProduct(product.id, "designType", "new")
+                            {
+                              updateProduct(product.id, "designType", "new");
+                              updateProduct(product.id, "lidSelectedOldDesign", null);
+                              updateProduct(product.id, "tubSelectedOldDesign", null);
+                              updateProduct(product.id, "lidDesignFile", null);
+                              updateProduct(product.id, "tubDesignFile", null);
+                            }
                           }
                           className={`px-[2vw] py-[0.6vw] rounded-[0.4vw] cursor-pointer text-[0.85vw] font-medium transition-all duration-200 ${
                             product.designType === "new"
@@ -2104,6 +2254,19 @@ useEffect(() => {
                       <h3 className="text-[1vw] font-semibold text-purple-900 mb-[1vw]">
                         Design Selection
                       </h3>
+
+                      {product.imlType === "LID & TUB" && (
+                        <label className="flex items-center gap-[0.6vw] mb-[1vw] font-medium text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={product.singleImlDesign || false}
+                            onChange={(e) => updateProduct(product.id, "singleImlDesign", e.target.checked)}
+                            className="w-[1.1vw] h-[1.1vw]"
+                          />
+                          <span>Select Single IML Design for LID & TUB</span>
+                        </label>
+                      )}
+
 
                       {product.designType === "existing" ? (
                         <div>
@@ -2126,10 +2289,10 @@ useEffect(() => {
                                             key={file.id}
                                             className="text-center"
                                             onClick={() =>
-                                              updateProduct(
+                                              updateProductWithDesignStatus(
                                                 product.id,
                                                 "lidSelectedOldDesign",
-                                                file.id
+                                                file.id,
                                               )
                                             }
                                           >
@@ -2190,12 +2353,13 @@ useEffect(() => {
                                                   file.id
                                                 }
                                                 onChange={() =>
-                                                  updateProduct(
-                                                    product.id,
-                                                    "lidSelectedOldDesign",
-                                                    file.id
-                                                  )
-                                                }
+                                                updateProductWithDesignStatus(
+                                                  product.id,
+                                                  "lidSelectedOldDesign",
+                                                  file.id,
+                                                )
+                                              }
+
                                                 onClick={(e) => {
                                                   if (
                                                     file.type === "pdf" &&
@@ -2205,7 +2369,7 @@ useEffect(() => {
                                                   ) {
                                                     generatePdfThumbnailFromUrl(
                                                       file.path,
-                                                      `old-${file.id}`
+                                                      `old-${file.id}`,
                                                     );
                                                   }
                                                 }}
@@ -2235,7 +2399,7 @@ useEffect(() => {
                                             OLD_DESIGN_FILES.find(
                                               (f) =>
                                                 f.id ===
-                                                product.lidSelectedOldDesign
+                                                product.lidSelectedOldDesign,
                                             );
                                           return (
                                             <div className="text-center w-full">
@@ -2292,176 +2456,178 @@ useEffect(() => {
                               </div>
 
                               {/* TUB Design Selection - Optional */}
-                              <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
-                                <div>
-                                  <label className="block text-[0.9vw] font-medium text-purple-700 mb-[0.75vw]">
-                                    Select TUB Design (Optional)
-                                  </label>
-                                  <div className="border-2 border-dashed border-purple-300 rounded-[0.6vw] p-[1vw] bg-white">
-                                    <div className="grid grid-cols-3 gap-[1.5vw]">
-                                      {OLD_DESIGN_FILES.map((file) => (
-                                        <div
-                                          key={file.id}
-                                          className="text-center"
-                                          onClick={() =>
-                                            updateProduct(
-                                              product.id,
-                                              "tubSelectedOldDesign",
-                                              file.id
-                                            )
-                                          }
-                                        >
-                                          <div
-                                            className={`w-[6vw] h-[6vw] mx-auto bg-gray-100 rounded-[0.6vw] flex items-center justify-center text-[3vw] mb-[0.8vw] border-2 ${
-                                              product.tubSelectedOldDesign ===
-                                              file.id
-                                                ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300"
-                                                : "border-gray-300"
-                                            } overflow-hidden cursor-pointer hover:border-purple-400 transition-all`}
-                                          >
-                                            {file.type === "pdf" ? (
-                                              pdfPreviews[`old-${file.id}`] ? (
-                                                <img
-                                                  src={
-                                                    pdfPreviews[
-                                                      `old-${file.id}`
-                                                    ]
-                                                  }
-                                                  alt={file.name}
-                                                  className="w-full h-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="flex flex-col items-center">
-                                                  <svg
-                                                    className="w-[3vw] h-[3vw] text-red-500"
-                                                    fill="currentColor"
-                                                    viewBox="0 0 24 24"
-                                                  >
-                                                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
-                                                    <path
-                                                      d="M14 2v6h6M10 13h4m-4 4h4"
-                                                      stroke="white"
-                                                      strokeWidth="1"
-                                                    />
-                                                  </svg>
-                                                  <span className="text-[0.6vw] text-gray-500 mt-1">
-                                                    Loading...
-                                                  </span>
-                                                </div>
-                                              )
-                                            ) : (
-                                              <img
-                                                src={file.path}
-                                                alt={file.name}
-                                                className="w-full h-full object-cover"
-                                              />
-                                            )}
-                                          </div>
-                                          <label className="flex items-center justify-center gap-[0.4vw] text-[0.75vw] text-gray-500 cursor-pointer">
-                                            <input
-                                              type="radio"
-                                              name={`tub-design-${product.id}`}
-                                              checked={
-                                                product.tubSelectedOldDesign ===
-                                                file.id
-                                              }
-                                              onChange={() =>
-                                                updateProduct(
+                                {!product.singleImlDesign && (
+                                  <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
+                                    <div>
+                                      <label className="block text-[0.9vw] font-medium text-purple-700 mb-[0.75vw]">
+                                        Select TUB Design <span className="text-red-500">*</span>
+                                      </label>
+                                      <div className="border-2 border-dashed border-purple-300 rounded-[0.6vw] p-[1vw] bg-white">
+                                        <div className="grid grid-cols-3 gap-[1.5vw]">
+                                          {OLD_DESIGN_FILES.map((file) => (
+                                            <div
+                                              key={file.id}
+                                              className="text-center"
+                                              onClick={() =>
+                                                updateProductWithDesignStatus(
                                                   product.id,
                                                   "tubSelectedOldDesign",
-                                                  file.id
+                                                  file.id,
                                                 )
                                               }
-                                              onClick={(e) => {
-                                                if (
-                                                  file.type === "pdf" &&
-                                                  !pdfPreviews[`old-${file.id}`]
-                                                ) {
-                                                  generatePdfThumbnailFromUrl(
-                                                    file.path,
-                                                    `old-${file.id}`
-                                                  );
-                                                }
-                                              }}
-                                              className="w-[0.9vw] h-[0.9vw] cursor-pointer"
-                                            />
-                                            <span className="text-[0.75vw] font-medium">
-                                              {file.name}
-                                            </span>
-                                          </label>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="h-full">
-                                  {/* TUB Design Preview */}
-                                  {product.tubSelectedOldDesign && (
-                                    <div className="h-full">
-                                      <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.75vw]">
-                                        TUB Design Preview
-                                      </label>
-                                      <div className="border-2 relative border-purple-300 rounded-[0.6vw] p-[1vw] bg-purple-50 flex items-center justify-center h-[84%]">
-                                        {(() => {
-                                          const selectedFile =
-                                            OLD_DESIGN_FILES.find(
-                                              (f) =>
-                                                f.id ===
-                                                product.tubSelectedOldDesign
-                                            );
-                                          return (
-                                            <div className="text-center w-full h-full">
-                                              <div className="w-full h-auto max-h-[12vw] mx-auto rounded-[0.6vw] flex items-center justify-center mb-[1vw] overflow-hidden">
-                                                {selectedFile.type === "pdf" ? (
-                                                  pdfPreviews[
-                                                    `old-${selectedFile.id}`
-                                                  ] ? (
+                                            >
+                                              <div
+                                                className={`w-[6vw] h-[6vw] mx-auto bg-gray-100 rounded-[0.6vw] flex items-center justify-center text-[3vw] mb-[0.8vw] border-2 ${
+                                                  product.tubSelectedOldDesign ===
+                                                  file.id
+                                                    ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300"
+                                                    : "border-gray-300"
+                                                } overflow-hidden cursor-pointer hover:border-purple-400 transition-all`}
+                                              >
+                                                {file.type === "pdf" ? (
+                                                  pdfPreviews[`old-${file.id}`] ? (
                                                     <img
                                                       src={
                                                         pdfPreviews[
-                                                          `old-${selectedFile.id}`
+                                                          `old-${file.id}`
                                                         ]
                                                       }
-                                                      alt={selectedFile.name}
-                                                      className="w-full h-auto max-h-[4.5vw] object-contain"
+                                                      alt={file.name}
+                                                      className="w-full h-full object-cover"
                                                     />
                                                   ) : (
-                                                    <div className="flex flex-col items-center py-4">
-                                                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
-                                                      <p className="text-gray-500 text-[0.8vw]">
-                                                        Loading PDF preview...
-                                                      </p>
+                                                    <div className="flex flex-col items-center">
+                                                      <svg
+                                                        className="w-[3vw] h-[3vw] text-red-500"
+                                                        fill="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                      >
+                                                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" />
+                                                        <path
+                                                          d="M14 2v6h6M10 13h4m-4 4h4"
+                                                          stroke="white"
+                                                          strokeWidth="1"
+                                                        />
+                                                      </svg>
+                                                      <span className="text-[0.6vw] text-gray-500 mt-1">
+                                                        Loading...
+                                                      </span>
                                                     </div>
                                                   )
                                                 ) : (
                                                   <img
-                                                    src={selectedFile.path}
-                                                    alt={selectedFile.name}
-                                                    className="w-full h-auto max-h-[12vw] object-contain"
+                                                    src={file.path}
+                                                    alt={file.name}
+                                                    className="w-full h-full object-cover"
                                                   />
                                                 )}
                                               </div>
-                                              <button
-                                                onClick={() => {
-                                                  setPreviewModal({
-                                                    isOpen: true,
-                                                    type: selectedFile.type,
-                                                    path: selectedFile.path,
-                                                    name: selectedFile.name,
-                                                  });
-                                                }}
-                                                className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
-                                              >
-                                                Preview Full
-                                              </button>
+                                              <label className="flex items-center justify-center gap-[0.4vw] text-[0.75vw] text-gray-500 cursor-pointer">
+                                                <input
+                                                  type="radio"
+                                                  name={`tub-design-${product.id}`}
+                                                  checked={
+                                                    product.tubSelectedOldDesign ===
+                                                    file.id
+                                                  }
+                                                  onChange={() =>
+                                                    updateProduct(
+                                                      product.id,
+                                                      "tubSelectedOldDesign",
+                                                      file.id,
+                                                    )
+                                                  }
+                                                  onClick={(e) => {
+                                                    if (
+                                                      file.type === "pdf" &&
+                                                      !pdfPreviews[`old-${file.id}`]
+                                                    ) {
+                                                      generatePdfThumbnailFromUrl(
+                                                        file.path,
+                                                        `old-${file.id}`,
+                                                      );
+                                                    }
+                                                  }}
+                                                  className="w-[0.9vw] h-[0.9vw] cursor-pointer"
+                                                />
+                                                <span className="text-[0.75vw] font-medium">
+                                                  {file.name}
+                                                </span>
+                                              </label>
                                             </div>
-                                          );
-                                        })()}
+                                          ))}
+                                        </div>
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-                              </div>
+                                    <div className="h-full">
+                                      {/* TUB Design Preview */}
+                                      {product.tubSelectedOldDesign && (
+                                        <div className="h-full">
+                                          <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.75vw]">
+                                            TUB Design Preview
+                                          </label>
+                                          <div className="border-2 relative border-purple-300 rounded-[0.6vw] p-[1vw] bg-purple-50 flex items-center justify-center h-[84%]">
+                                            {(() => {
+                                              const selectedFile =
+                                                OLD_DESIGN_FILES.find(
+                                                  (f) =>
+                                                    f.id ===
+                                                    product.tubSelectedOldDesign,
+                                                );
+                                              return (
+                                                <div className="text-center w-full h-full">
+                                                  <div className="w-full h-auto max-h-[12vw] mx-auto rounded-[0.6vw] flex items-center justify-center mb-[1vw] overflow-hidden">
+                                                    {selectedFile.type === "pdf" ? (
+                                                      pdfPreviews[
+                                                        `old-${selectedFile.id}`
+                                                      ] ? (
+                                                        <img
+                                                          src={
+                                                            pdfPreviews[
+                                                              `old-${selectedFile.id}`
+                                                            ]
+                                                          }
+                                                          alt={selectedFile.name}
+                                                          className="w-full h-auto max-h-[4.5vw] object-contain"
+                                                        />
+                                                      ) : (
+                                                        <div className="flex flex-col items-center py-4">
+                                                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-2"></div>
+                                                          <p className="text-gray-500 text-[0.8vw]">
+                                                            Loading PDF preview...
+                                                          </p>
+                                                        </div>
+                                                      )
+                                                    ) : (
+                                                      <img
+                                                        src={selectedFile.path}
+                                                        alt={selectedFile.name}
+                                                        className="w-full h-auto max-h-[12vw] object-contain"
+                                                      />
+                                                    )}
+                                                  </div>
+                                                  <button
+                                                    onClick={() => {
+                                                      setPreviewModal({
+                                                        isOpen: true,
+                                                        type: selectedFile.type,
+                                                        path: selectedFile.path,
+                                                        name: selectedFile.name,
+                                                      });
+                                                    }}
+                                                    className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
+                                                  >
+                                                    Preview Full
+                                                  </button>
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                             </div>
                           ) : (
                             /* Single Design Selection for LID or TUB only */
@@ -2478,11 +2644,12 @@ useEffect(() => {
                                         key={file.id}
                                         className="text-center"
                                         onClick={() =>
-                                          updateProduct(
-                                            product.id,
-                                            "lidSelectedOldDesign",
-                                            file.id
-                                          )
+                                            updateProductWithDesignStatus(
+                                              product.id,
+                                              "lidSelectedOldDesign",
+                                              file.id,
+                                            )
+
                                         }
                                       >
                                         <div
@@ -2539,11 +2706,12 @@ useEffect(() => {
                                               file.id
                                             }
                                             onChange={() =>
-                                              updateProduct(
+                                              updateProductWithDesignStatus(
                                                 product.id,
                                                 "lidSelectedOldDesign",
-                                                file.id
+                                                file.id,
                                               )
+
                                             }
                                             onClick={(e) => {
                                               if (
@@ -2552,7 +2720,7 @@ useEffect(() => {
                                               ) {
                                                 generatePdfThumbnailFromUrl(
                                                   file.path,
-                                                  `old-${file.id}`
+                                                  `old-${file.id}`,
                                                 );
                                               }
                                             }}
@@ -2581,7 +2749,7 @@ useEffect(() => {
                                           OLD_DESIGN_FILES.find(
                                             (f) =>
                                               f.id ===
-                                              product.lidSelectedOldDesign
+                                              product.lidSelectedOldDesign,
                                           );
                                         if (!selectedFile) return null;
 
@@ -2687,21 +2855,28 @@ useEffect(() => {
                                   updateProduct(
                                     product.id,
                                     "designSharedMail",
-                                    e.target.checked
+                                    e.target.checked,
                                   );
-                                  const newValue = e.target.checked ? "pending" : "approved";
+                                  const newValue = e.target.checked
+                                    ? "pending"
+                                    : "approved";
                                   updateProduct(
                                     product.id,
                                     "designStatus",
-                                    newValue
+                                    newValue,
                                   );
-                                  const productIsPOUpdated = (product.orderStatus && (product.orderStatus !== "Artwork Pending" && product.orderStatus !== "Artwork Approved" ));
-                                  const orderStatusV = e.target.checked ? "Artwork Pending" : "Artwork Approved"
+                                  const productIsPOUpdated =
+                                    product.orderStatus &&
+                                    product.orderStatus !== "Artwork Pending" &&
+                                    product.orderStatus !== "Artwork Approved";
+                                  const orderStatusV = e.target.checked
+                                    ? "Artwork Pending"
+                                    : "Artwork Approved";
                                   if (!productIsPOUpdated) {
                                     updateProduct(
                                       product.id,
                                       "orderStatus",
-                                      orderStatusV
+                                      orderStatusV,
                                     );
                                   }
                                 }}
@@ -2720,18 +2895,20 @@ useEffect(() => {
                                 required
                                 placeholder="Select Status"
                                 options={
-                                  product.designSharedMail 
-                                    ? ["Pending"]  // Checked → ONLY Pending
+                                  product.designSharedMail
+                                    ? ["Pending"] // Checked → ONLY Pending
                                     : ["Approved"] // Unchecked → ONLY Approved
                                 }
                                 value={
-                                  product.designStatus === "pending" ? "Pending" :
-                                  product.designStatus === "approved" ? "Approved" : ""
+                                  product.designStatus === "pending"
+                                    ? "Pending"
+                                    : product.designStatus === "approved"
+                                      ? "Approved"
+                                      : ""
                                 }
                                 onChange={(e) => {
                                   const newValue = e.target.value.toLowerCase();
                                 }}
-                                
                               />
                             </div>
 
@@ -2748,7 +2925,7 @@ useEffect(() => {
                                     updateProduct(
                                       product.id,
                                       "approvedDate",
-                                      e.target.value
+                                      e.target.value,
                                     )
                                   }
                                   className="w-full px-[0.75vw] py-[0.45vw] border border-gray-300 bg-white rounded-[0.5vw] text-[0.85vw] outline-none box-border focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
@@ -2758,7 +2935,8 @@ useEffect(() => {
                           </div>
 
                           {/* Design Upload Section - Conditional based on imlType */}
-                          {(product.designStatus === "approved" || !product.designSharedMail)&& (
+                          {(product.designStatus === "approved" ||
+                            !product.designSharedMail) && (
                             <div className="mt-[1vw]">
                               {product.imlType === "LID & TUB" ? (
                                 // Show two separate upload sections for LID & TUB
@@ -2774,10 +2952,10 @@ useEffect(() => {
                                         <FileUploadBox
                                           file={product.lidDesignFile}
                                           onFileChange={(file) => {
-                                            updateProduct(
+                                            updateProductWithDesignStatus(
                                               product.id,
                                               "lidDesignFile",
-                                              file
+                                              file,
                                             );
                                             if (
                                               file &&
@@ -2785,7 +2963,7 @@ useEffect(() => {
                                             ) {
                                               generatePdfThumbnail(
                                                 file,
-                                                `${product.id}-lid`
+                                                `${product.id}-lid`,
                                               );
                                             }
                                           }}
@@ -2807,46 +2985,48 @@ useEffect(() => {
                                   </div>
 
                                   {/* TUB Design Upload - Optional */}
-                                  <div>
-                                    <label className="block text-[0.9vw] font-medium text-gray-700 mb-[0.5vw]">
-                                      Upload TUB Design File (Optional)
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-[2vw]">
-                                      <div>
-                                        <FileUploadBox
-                                          file={product.tubDesignFile}
-                                          onFileChange={(file) => {
-                                            updateProduct(
-                                              product.id,
-                                              "tubDesignFile",
-                                              file
-                                            );
-                                            if (
-                                              file &&
-                                              file.type === "application/pdf"
-                                            ) {
-                                              generatePdfThumbnail(
-                                                file,
-                                                `${product.id}-tub`
-                                              );
-                                            }
-                                          }}
-                                          productId={`${product.id}-tub`}
-                                          small
-                                        />
-                                      </div>
-                                      <div>
-                                        {product.tubDesignFile && (
-                                          <DesignPreview
+                                  {!product.singleImlDesign && (
+                                    <div>
+                                      <label className="block text-[0.9vw] font-medium text-gray-700 mb-[0.5vw]">
+                                        Upload TUB Design File <span className="text-red-500">*</span>
+                                      </label>
+                                      <div className="grid grid-cols-2 gap-[2vw]">
+                                        <div>
+                                          <FileUploadBox
                                             file={product.tubDesignFile}
+                                            onFileChange={(file) => {
+                                              updateProductWithDesignStatus(
+                                                product.id,
+                                                "tubDesignFile",
+                                                file,
+                                              );
+                                              if (
+                                                file &&
+                                                file.type === "application/pdf"
+                                              ) {
+                                                generatePdfThumbnail(
+                                                  file,
+                                                  `${product.id}-tub`,
+                                                );
+                                              }
+                                            }}
                                             productId={`${product.id}-tub`}
-                                            pdfPreviews={pdfPreviews}
-                                            setPreviewModal={setPreviewModal}
+                                            small
                                           />
-                                        )}
+                                        </div>
+                                        <div>
+                                          {product.tubDesignFile && (
+                                            <DesignPreview
+                                              file={product.tubDesignFile}
+                                              productId={`${product.id}-tub`}
+                                              pdfPreviews={pdfPreviews}
+                                              setPreviewModal={setPreviewModal}
+                                            />
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
+                                  )}
                                 </div>
                               ) : (
                                 // Show single upload for LID or TUB only
@@ -2860,10 +3040,10 @@ useEffect(() => {
                                       <FileUploadBox
                                         file={product.lidDesignFile}
                                         onFileChange={(file) => {
-                                          updateProduct(
+                                          updateProductWithDesignStatus(
                                             product.id,
                                             "lidDesignFile",
-                                            file
+                                            file,
                                           );
                                           if (
                                             file &&
@@ -2871,7 +3051,7 @@ useEffect(() => {
                                           ) {
                                             generatePdfThumbnail(
                                               file,
-                                              product.id
+                                              product.id,
                                             );
                                           }
                                         }}
@@ -2903,7 +3083,7 @@ useEffect(() => {
                         {!isProductLocked(product) && (
                           <div className="flex justify-end mt-[0.75vw]">
                             <button
-                              onClick={() => removeProduct(product.id)}  
+                              onClick={() => removeProduct(product.id)}
                               className="px-[2vw] py-[0.7vw] border border-red-500 text-red-500 bg-white rounded-[0.5vw] text-[0.85vw] cursor-pointer transition-all duration-200 hover:bg-red-50"
                             >
                               Remove Product
@@ -2932,52 +3112,59 @@ useEffect(() => {
             title="Payment Details - Client Payments"
             styles={{ position: "relative" }}
           >
-           
-             {/* NEW RADIO BUTTONS */}
+            {/* NEW RADIO BUTTONS */}
             <div className="flex items-center gap-[1.5vw] mb-[1.5vw] p-[1vw] bg-gray-50 rounded-lg border border-gray-200 relative">
               <label className="flex items-center gap-[0.75vw] cursor-pointer">
                 <input
                   type="radio"
                   name="paymentType"
                   value="advance"
-                  checked={selectedPaymentType === 'advance'}
+                  checked={selectedPaymentType === "advance"}
                   onChange={(e) => setSelectedPaymentType(e.target.value)}
                   className="w-[1.2vw] h-[1.2vw] text-blue-600"
                 />
-                <span className="text-[0.95vw] font-medium text-gray-700">Advance Payment</span>
+                <span className="text-[0.95vw] font-medium text-gray-700">
+                  Advance Payment
+                </span>
               </label>
               <label className="flex items-center gap-[0.75vw] cursor-pointer">
                 <input
-                  type="radio" 
+                  type="radio"
                   name="paymentType"
                   value="po"
-                  checked={selectedPaymentType === 'po'}
+                  checked={selectedPaymentType === "po"}
                   onChange={(e) => setSelectedPaymentType(e.target.value)}
                   className="w-[1.2vw] h-[1.2vw] text-blue-600"
                 />
-                <span className="text-[0.95vw] font-medium text-gray-700">PO</span>
+                <span className="text-[0.95vw] font-medium text-gray-700">
+                  PO
+                </span>
               </label>
               <button
                 onClick={() => {
                   setBulkPayment({
-                    paymentType: selectedPaymentType,  // ✅ Sync with radio selection
+                    paymentType: selectedPaymentType, // ✅ Sync with radio selection
                     method: "",
                     amount: "",
                     remarks: "",
                     file: null,
                   });
-                  setShowPaymentModal(true)
+                  setShowPaymentModal(true);
                 }}
                 className="px-[.8vw] py-[.65vw] bg-green-600 text-white text-[.9vw] rounded-lg font-semibold hover:bg-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 absolute top-[50%] right-[0%] translate-y-[-50%] cursor-pointer"
               >
                 <span className="text-[1vw]">+</span>
-                Add {selectedPaymentType === 'advance' ? 'Advance' : 'PO'} Payment
+                Add {selectedPaymentType === "advance" ? "Advance" : "PO"}{" "}
+                Payment
               </button>
             </div>
 
-            <p className="mt-[-1vw] mb-[.75vw] text-[0.85vw] text-gray-700">Note: Atleast one payment record needs to be added if for any product - the artwork is approved</p>
+            <p className="mt-[-1vw] mb-[.75vw] text-[0.85vw] text-gray-700">
+              Note: Atleast one payment record needs to be added if for any
+              product - the artwork is approved
+            </p>
 
- {/* Compact Summary Bar */}
+            {/* Compact Summary Bar */}
 
             <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-[0.5vw] px-[.5vw] py-[.75vw] mb-[1vw] w-fit pr-[2vw]">
               <div className="flex items-center gap-[2vw]">
@@ -3047,7 +3234,7 @@ useEffect(() => {
                                 year: "numeric",
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              }
+                              },
                             )}
                           </td>
                           <td className="px-[1vw] py-[0.7vw]">
@@ -3194,7 +3381,7 @@ useEffect(() => {
             // disabled={!isFormValid}
             className="px-[1.5vw] py-[0.65vw] bg-green-600 text-white border-none rounded-[0.5vw] text-[0.85vw] font-semibold cursor-pointer transition-all duration-200 hover:bg-green-700 shadow-md"
           >
-            {isFormValid ? 'Submit Order' : 'Complete All Fields First'}
+            {isFormValid ? "Submit Order" : "Complete All Fields First"}
           </button>
         </div>
       </div>
@@ -3209,40 +3396,38 @@ useEffect(() => {
         calculateTotals={calculateTotals}
       />
       {showToast && (
-  <div className="fixed top-4 right-4 z-50 bg-white border-red-500 border-[0.2vw] text-white p-4 rounded-lg shadow-xl animate-in slide-in-from-right-2 fade-in duration-300 max-w-md">
-   <div className="flex items-start gap-3">
-      
-      {/* Icon */}
-      <div className="flex-shrink-0 text-red-500">
-        <svg
-          className="w-[1.25vw] h-[1.25vw]"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-          />
-        </svg>
-      </div>
+        <div className="fixed top-4 right-4 z-50 bg-white border-red-500 border-[0.2vw] text-white p-4 rounded-lg shadow-xl animate-in slide-in-from-right-2 fade-in duration-300 max-w-md">
+          <div className="flex items-start gap-3">
+            {/* Icon */}
+            <div className="flex-shrink-0 text-red-500">
+              <svg
+                className="w-[1.25vw] h-[1.25vw]"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                />
+              </svg>
+            </div>
 
-      {/* Message */}
-      <p className="text-[.8vw] font-medium flex-1 text-black mt-[-.15vw]">
-        {toastMessage}
-      </p>
-    </div>
+            {/* Message */}
+            <p className="text-[.8vw] font-medium flex-1 text-black mt-[-.15vw]">
+              {toastMessage}
+            </p>
+          </div>
 
-    {/* Close Button */}
-    <button
-      onClick={() => setShowToast(false)}
-      className="absolute bottom-[8%] right-[4%] text-gray-400 hover:text-gray-700 text-[.85vw] font-semibold cursor-pointer"
-    >
-      Close
-    </button>
-  </div>
-)}
-
+          {/* Close Button */}
+          <button
+            onClick={() => setShowToast(false)}
+            className="absolute bottom-[8%] right-[4%] text-gray-400 hover:text-gray-700 text-[.85vw] font-semibold cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3600,9 +3785,20 @@ function FileUploadBox({ file, onFileChange, productId, small }) {
   );
 }
 
-function Section({ title, styles = null, children, onClick, isCollapsed }) {
+function Section({
+  title,
+  styles = null,
+  children,
+  onClick,
+  isCollapsed,
+  data_section = null,
+}) {
   return (
-    <div className={`mt-[1vw]`} style={styles ?? undefined}>
+    <div
+      className={`mt-[1vw]`}
+      style={styles ?? undefined}
+      data-section={data_section}
+    >
       <div
         className={`bg-blue-600 text-white px-[1.5vw] py-[0.8vw] rounded-t-[0.6vw] text-[1vw] font-medium ${
           onClick ? "cursor-pointer" : ""
@@ -3631,7 +3827,12 @@ function Input({
   return (
     <div>
       <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
-        {label} {required && <><span className="text-red-500">*</span></>}
+        {label}{" "}
+        {required && (
+          <>
+            <span className="text-red-500">*</span>
+          </>
+        )}
       </label>
       <input
         type={type}
@@ -3659,7 +3860,12 @@ function Select({
   return (
     <div>
       <label className="block text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
-        {label} {required && <><span className="text-red-500">*</span></>}
+        {label}{" "}
+        {required && (
+          <>
+            <span className="text-red-500">*</span>
+          </>
+        )}
       </label>
       <div className="relative">
         <select
