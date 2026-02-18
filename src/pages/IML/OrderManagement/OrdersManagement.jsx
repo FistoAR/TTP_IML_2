@@ -6,6 +6,7 @@ import FileUploadBox from "./modals/FileUploadBox";
 import * as pdfjsLib from "pdfjs-dist";
 import InvoiceTable from './modals/InvoiceTable';
 import DeletedRequestsTable from "./modals/DeletedRequestsTable ";
+import ConfirmModal from "../../../components/ConfirmModal";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -141,6 +142,14 @@ export default function OrdersManagement2() {
     orderNumber: null,
     invoices: [],
   });
+
+const [confirmState, setConfirmState] = useState({
+    isOpen: false,
+    message: "",
+    onYes: () => {},
+    onNo: () => {setConfirmState({isOpen: false})},
+  });
+ 
 
   const [tempChangeRequest, setTempChangeRequest] = useState(null);
 
@@ -4332,6 +4341,19 @@ export default function OrdersManagement2() {
       } else {
         alert("Error: Missing change data");
       }
+
+      setConfirmState({
+          isOpen: true,
+          message: "Do you want to update the PO details associated with this order?",
+          onYes: () => {
+            // navigate to po details page with the order details sent
+            navigate("/iml/purchase/po-details", {
+            state: { orderId: order.id, fromOrdersManagement: false },
+          });
+        },
+        onNo: () => setConfirmState({isOpen: false})
+      });
+ 
     };
 
     return (
@@ -7862,6 +7884,13 @@ export default function OrdersManagement2() {
       {deleteOrderModal.isOpen && <OrderDeletionModal />}
       {orderInvoiceModal.isOpen && <OrderDeleteInvoiceModal />}
       {deletedOrderInvoicesModal.isOpen && <OrderInvoiceModalView />}
+       <ConfirmModal
+        isOpen={confirmState.isOpen}
+        message={confirmState.message}
+        onYes={confirmState.onYes}
+        onNo={confirmState.onNo}
+      />
+ 
     </div>
   );
 }
