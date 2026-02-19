@@ -2677,22 +2677,7 @@ const [confirmState, setConfirmState] = useState({
               )}
             </div>
 
-            {isEditMode && (
-              <>
-                <label className="flex items-center gap-[0.6vw] mb-[1vw] font-medium text-gray-700 cursor-pointer text-[.85vw]">
-                  <input
-                    type="checkbox"
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        // setChangeRequestModal((prev) =>  (()))
-                      }
-                    }}
-                    className="w-[1.1vw] h-[1.1vw]"
-                  />
-                  <span>Update PO Details</span>
-                </label>
-              </>
-            )}
+            
           </div>
 
           {/* Action Buttons */}
@@ -4342,17 +4327,23 @@ const [confirmState, setConfirmState] = useState({
         alert("Error: Missing change data");
       }
 
-      setConfirmState({
-          isOpen: true,
-          message: "Do you want to update the PO details associated with this order?",
-          onYes: () => {
-            // navigate to po details page with the order details sent
-            navigate("/iml/purchase/po-details", {
-            state: { orderId: order.id, fromOrdersManagement: false },
-          });
-        },
-        onNo: () => setConfirmState({isOpen: false})
-      });
+      console.log(`Tempchangeresquest plain: ${tempChangeRequest}`);
+      console.log(`Tempchangeresquest JSON: ${JSON.stringify(tempChangeRequest, null, 2)}`);
+
+      if (hasMovedToPurchase(order)) {
+        setConfirmState({
+            isOpen: true,
+            message: "Do you want to update the PO details associated with this order?",
+            onYes: () => {
+              // navigate to po details page with the order details sent
+              navigate("/iml/purchase/po-details", {
+              state: { orderId: order.id, fromOrdersManagement: false },
+            });
+          },
+          onNo: () => setConfirmState({isOpen: false})
+        });
+      }
+
  
     };
 
