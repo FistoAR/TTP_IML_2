@@ -3435,9 +3435,53 @@ useEffect(() => {
               </svg>
             </div>
 
-            {/* Message */}
+            {/* Message with highlighted prefix */}
             <p className="text-[.8vw] font-medium flex-1 text-black mt-[-.15vw]">
-              {toastMessage}
+              {(() => {
+                const msg = toastMessage;
+                // Pattern: "Required - Product #N:" → highlight that whole prefix
+                const prodMatch = msg.match(/^(Required - Product #\d+:)([\s\S]*)$/);
+                if (prodMatch) {
+                  return (
+                    <>
+                      <span className="text-red-600 font-bold">{prodMatch[1]}</span>
+                      {prodMatch[2]}
+                    </>
+                  );
+                }
+                // Pattern: "Required - Contact Details:" → highlight "Required"
+                const contactMatch = msg.match(/^(Required)([\s\S]*)$/);
+                if (contactMatch) {
+                  return (
+                    <>
+                      <span className="text-red-600 font-bold">{contactMatch[1]}</span>
+                      {contactMatch[2]}
+                    </>
+                  );
+                }
+                // Pattern: "Payment: …" → highlight "Payment:"
+                const paymentMatch = msg.match(/^(Payment:)([\s\S]*)$/);
+                if (paymentMatch) {
+                  return (
+                    <>
+                      <span className="text-orange-600 font-bold">{paymentMatch[1]}</span>
+                      {paymentMatch[2]}
+                    </>
+                  );
+                }
+                // Pattern: "Order Estimate: …" → highlight "Order Estimate:"
+                const estimateMatch = msg.match(/^(Order Estimate:)([\s\S]*)$/);
+                if (estimateMatch) {
+                  return (
+                    <>
+                      <span className="text-blue-600 font-bold">{estimateMatch[1]}</span>
+                      {estimateMatch[2]}
+                    </>
+                  );
+                }
+                // Fallback: plain text
+                return msg;
+              })()}
             </p>
           </div>
 

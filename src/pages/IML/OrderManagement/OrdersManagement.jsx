@@ -24,7 +24,7 @@ const OLD_DESIGN_FILES = [
 ];
 
 // Mock data storage (In production, this would be an API/Database)
-const DATA_VERSION = "4.2"; // Increment this when structure changes
+const DATA_VERSION = "4.3"; // Increment this when structure changes
 const STORAGE_KEY = "imlorders";
 const VERSION_KEY = "imlorders_version";
 
@@ -54,6 +54,7 @@ export default function OrdersManagement2() {
   });
 
   const navigate = useNavigate();
+  const scrollPositionRef = useRef(0);
 
   const [viewMode, setViewMode] = useState("all"); // "all" or "remaining"
   const [paymentModalOrder, setPaymentModalOrder] = useState(null);
@@ -159,7 +160,8 @@ const [confirmState, setConfirmState] = useState({
     onYes: () => {},
     onNo: () => {setConfirmState({isOpen: false})},
   });
- 
+
+  const [refundDetailsModal, setRefundDetailsModal] = useState({ isOpen: false });
 
   const [tempChangeRequest, setTempChangeRequest] = useState(null);
 
@@ -327,35 +329,38 @@ const [confirmState, setConfirmState] = useState({
             id: 1,
             productName: "Round",
             size: "300ml",
-            imlName: "Premium IML Labels", // MOVED HERE
-            imlType: "LID",
-            lidColor: "red",
-            tubColor: "transparent",
-            lidLabelQty: "1000",
-            lidProductionQty: "600",
-            lidStock: 400,
-            tubLabelQty: "",
-            tubProductionQty: "",
-            tubStock: 0,
-            budget: 20000,
-            approvedDate: "2025-12-10",
-            designSharedMail: false,
-            orderStatus: "Artwork Pending",
-            designStatus: "pending",
-            designType: "new",
-            moveToPurchase: false,
-          },
-          {
-            id: 2,
-            productName: "Round Square",
-            size: "500ml",
-            imlName: "Quality IML Solutions", // Different IML name for this product
+            imlName: "Premium IML Labels",
             imlType: "TUB",
             lidColor: "transparent",
-            tubColor: "blue",
+            tubColor: "red",
             lidLabelQty: "",
             lidProductionQty: "",
             lidStock: 0,
+            tubLabelQty: "1000",
+            tubProductionQty: "600",
+            tubStock: 400,
+            budget: 20000,
+            approvedDate: "2025-12-10",
+            designSharedMail: false,
+            orderStatus: "Artwork Approved",
+            designStatus: "approved",
+            designType: "new",
+            moveToPurchase: false,
+            singleImlDesign: false,
+            isCollapsed: false,
+            updatedAt: "2025-12-10T08:00:00.000Z",
+          },
+          {
+            id: 2,
+            productName: "Sweet Box",
+            size: "500gms",
+            imlName: "Quality IML Solutions",
+            imlType: "LID & TUB",
+            lidColor: "white",
+            tubColor: "white",
+            lidLabelQty: "1500",
+            lidProductionQty: "1200",
+            lidStock: 300,
             tubLabelQty: "1500",
             tubProductionQty: "1200",
             tubStock: 300,
@@ -366,6 +371,9 @@ const [confirmState, setConfirmState] = useState({
             orderStatus: "Artwork Pending",
             designType: "new",
             moveToPurchase: false,
+            singleImlDesign: false,
+            isCollapsed: false,
+            updatedAt: "2025-12-11T09:00:00.000Z",
           },
         ],
         payment: {
@@ -381,17 +389,10 @@ const [confirmState, setConfirmState] = useState({
             remarks: "Advance payment",
             createdAt: "2025-12-10T10:30:00.000Z",
           },
-          {
-            timestamp: "2025-12-12T09:00:00.000Z",
-            paymentType: "advance",
-            method: "UPI",
-            amount: 15000,
-            remarks: "Second installment",
-            createdAt: "2025-12-12T09:00:00.000Z",
-          },
         ],
         status: "pending",
         createdAt: "2025-12-10T08:00:00.000Z",
+        updatedAt: "2025-12-11T09:00:00.000Z",
       },
       {
         id: "ORD-10135",
@@ -409,25 +410,28 @@ const [confirmState, setConfirmState] = useState({
         products: [
           {
             id: 3,
-            productName: "Sweet Box",
-            size: "250gms",
-            imlName: "Eco IML Series", // MOVED HERE
-            imlType: "TUB",
-            lidColor: "transparent",
-            tubColor: "yellow",
-            lidLabelQty: "",
-            lidProductionQty: "",
-            lidStock: 0,
-            tubLabelQty: "1500",
-            tubProductionQty: "1200",
-            tubStock: 300,
+            productName: "Rectangle",
+            size: "750ml",
+            imlName: "Eco IML Series",
+            imlType: "LID",
+            lidColor: "green",
+            tubColor: "transparent",
+            lidLabelQty: "1500",
+            lidProductionQty: "1200",
+            lidStock: 300,
+            tubLabelQty: "",
+            tubProductionQty: "",
+            tubStock: 0,
             budget: 35000,
             approvedDate: "2025-12-13",
-            designSharedMail: false,
-            designStatus: "pending",
+            designSharedMail: true,
+            designStatus: "approved",
             orderStatus: "Artwork Pending",
             designType: "new",
             moveToPurchase: false,
+            singleImlDesign: false,
+            isCollapsed: false,
+            updatedAt: "2025-12-13T10:00:00.000Z",
           },
         ],
         payment: {
@@ -436,258 +440,8 @@ const [confirmState, setConfirmState] = useState({
         },
         paymentRecords: [],
         status: "pending",
-        createdAt: "2025-12-11T09:30:00.000Z",
-      },
-      {
-        id: "ORD-10136",
-        contact: {
-          company: "LMN Packaging",
-          contactName: "Rahul Mehta",
-          phone: "9001122334",
-          priority: "low",
-        },
-        orderNumber: "ORD-1298-302-541",
-        orderEstimate: {
-          estimatedNumber: "EST-003",
-          estimatedValue: 18000,
-        },
-        products: [
-          {
-            id: 4,
-            productName: "Rectangle",
-            size: "750ml",
-            imlName: "Standard IML", // MOVED HERE
-            imlType: "LID",
-            lidColor: "green",
-            tubColor: "transparent",
-            lidLabelQty: "800",
-            lidProductionQty: "800",
-            lidStock: 0,
-            tubLabelQty: "",
-            tubProductionQty: "",
-            tubStock: 0,
-            budget: 18000,
-            approvedDate: "2025-12-12",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "existing",
-            moveToPurchase: false,
-          },
-        ],
-        payment: {
-          totalEstimated: 18000,
-          remarks: "Full payment received",
-        },
-        paymentRecords: [
-          {
-            timestamp: "2025-12-12T11:15:00.000Z",
-            paymentType: "advance",
-            method: "Bank Transfer",
-            amount: 18000,
-            remarks: "Complete payment",
-            createdAt: "2025-12-12T11:15:00.000Z",
-          },
-        ],
-        status: "pending",
-        createdAt: "2025-12-12T08:00:00.000Z",
-      },
-      {
-        id: "ORD-10137",
-        contact: {
-          company: "OPQ Labels",
-          contactName: "Simran Kaur",
-          phone: "9988776655",
-          priority: "medium",
-        },
-        orderNumber: "ORD-3298-502-541",
-        orderEstimate: {
-          estimatedNumber: "EST-004",
-          estimatedValue: 60000,
-        },
-        products: [
-          {
-            id: 5,
-            productName: "Round",
-            size: "1000ml",
-            imlName: "Premium Plus IML", // MOVED HERE
-            imlType: "LID & TUB",
-            lidColor: "orange",
-            tubColor: "white",
-            lidLabelQty: "1200",
-            lidProductionQty: "1000",
-            lidStock: 200,
-            tubLabelQty: "1200",
-            tubProductionQty: "900",
-            tubStock: 300,
-            budget: 40000,
-            approvedDate: "2025-12-13",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "new",
-            moveToPurchase: false,
-          },
-          {
-            id: 6,
-            productName: "Rectangle",
-            size: "500ml",
-            imlName: "Classic IML Design", // Different IML name
-            imlType: "LID",
-            lidColor: "golden",
-            tubColor: "transparent",
-            lidLabelQty: "800",
-            lidProductionQty: "400",
-            lidStock: 400,
-            tubLabelQty: "",
-            tubProductionQty: "",
-            tubStock: 0,
-            budget: 20000,
-            approvedDate: "2025-12-14",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "new",
-            moveToPurchase: false,
-          },
-        ],
-        payment: {
-          totalEstimated: 60000,
-          remarks: "Partial payment done",
-        },
-        paymentRecords: [
-          {
-            timestamp: "2025-12-13T09:00:00.000Z",
-            paymentType: "advance",
-            method: "Cash",
-            amount: 20000,
-            remarks: "First advance",
-            createdAt: "2025-12-13T09:00:00.000Z",
-          },
-        ],
-        status: "pending",
         createdAt: "2025-12-13T08:00:00.000Z",
-      },
-      {
-        id: "ORD-10138",
-        contact: {
-          company: "RST Products",
-          contactName: "Anil Kumar",
-          phone: "9876501234",
-          priority: "high",
-        },
-        orderNumber: "ORD-5798-302-541",
-        orderEstimate: {
-          estimatedNumber: "EST-005",
-          estimatedValue: 75000,
-        },
-        products: [
-          {
-            id: 7,
-            productName: "Sweet Box TE",
-            size: "TE 500gms",
-            imlName: "Modern IML Tech", // MOVED HERE
-            imlType: "TUB",
-            lidColor: "transparent",
-            tubColor: "white",
-            lidLabelQty: "",
-            lidProductionQty: "",
-            lidStock: 0,
-            tubLabelQty: "3000",
-            tubProductionQty: "2000",
-            tubStock: 1000,
-            budget: 75000,
-            approvedDate: "2025-12-14",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "new",
-            moveToPurchase: false,
-          },
-        ],
-        payment: {
-          totalEstimated: 75000,
-          remarks: "Full payment done",
-        },
-        paymentRecords: [
-          {
-            timestamp: "2025-12-14T10:00:00.000Z",
-            paymentType: "advance",
-            method: "Bank Transfer",
-            amount: 75000,
-            remarks: "Paid in full",
-            createdAt: "2025-12-14T10:00:00.000Z",
-          },
-        ],
-        status: "pending",
-        createdAt: "2025-12-14T08:00:00.000Z",
-      },
-      {
-        id: "ORD-10139",
-        contact: {
-          company: "Global Packaging",
-          contactName: "Emily Davis",
-          phone: "9765432100",
-          priority: "high",
-        },
-        orderNumber: "ORD-6798-402-641",
-        orderEstimate: {
-          estimatedNumber: "EST-006",
-          estimatedValue: 90000,
-        },
-        products: [
-          {
-            id: 8,
-            productName: "Round Square",
-            size: "450ml",
-            imlName: "Premium IML Labels", // Same IML name as another order
-            imlType: "LID & TUB",
-            lidColor: "black",
-            tubColor: "golden",
-            lidLabelQty: "2000",
-            lidProductionQty: "1500",
-            lidStock: 500,
-            tubLabelQty: "2000",
-            tubProductionQty: "1800",
-            tubStock: 200,
-            budget: 50000,
-            approvedDate: "2025-12-15",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "existing",
-            moveToPurchase: false,
-          },
-          {
-            id: 9,
-            productName: "Rectangle",
-            size: "650ml",
-            imlName: "Eco IML Series", // Same as another order
-            imlType: "TUB",
-            lidColor: "transparent",
-            tubColor: "red",
-            lidLabelQty: "",
-            lidProductionQty: "",
-            lidStock: 0,
-            tubLabelQty: "1800",
-            tubProductionQty: "1800",
-            tubStock: 0,
-            budget: 40000,
-            approvedDate: "2025-12-16",
-            designSharedMail: false,
-            designStatus: "pending",
-            orderStatus: "Artwork Pending",
-            designType: "new",
-            moveToPurchase: false,
-          },
-        ],
-        payment: {
-          totalEstimated: 90000,
-          remarks: "Awaiting payment",
-        },
-        paymentRecords: [],
-        status: "pending",
-        createdAt: "2025-12-15T08:00:00.000Z",
+        updatedAt: "2025-12-13T10:00:00.000Z",
       },
     ];
 
@@ -759,6 +513,7 @@ const [confirmState, setConfirmState] = useState({
 
   // Handle edit order
   const handleEditOrder = (order) => {
+    scrollPositionRef.current = window.scrollY;
     setEditingOrder(order);
     setView("form");
   };
@@ -962,8 +717,47 @@ const [confirmState, setConfirmState] = useState({
   };
 
   // Modal handlers
-  const handleCloseChangeRequest = () => {
+  const handleCloseChangeRequest = (skipRestore = false) => {
     console.log(`Change request close triggered`);
+    
+    // Check if we're in re-edit mode and need to restore status on cancel
+    const isEditMode = sessionStorage.getItem("isEditMode") === "true";
+    if (isEditMode && changeRequestModal.order && changeRequestModal.product) {
+      const order = changeRequestModal.order;
+      const product = changeRequestModal.product;
+      
+      // Find the current product in orders to check its status
+      const currentOrder = orders.find(o => o.id === order.id);
+      const currentProduct = currentOrder?.products?.find(p => p.id === product.id);
+      
+      if (currentProduct && currentProduct.orderStatus === "Order Pending") {
+        // Restore based on designStatus: approved → "Artwork Approved", else → "Artwork Pending"
+        const restoredStatus = currentProduct.designStatus === "approved"
+          ? "Artwork Approved"
+          : "Artwork Pending";
+        
+        const updatedOrders = orders.map(o =>
+          o.id === order.id
+            ? {
+                ...o,
+                products: o.products.map(p =>
+                  p.id === product.id
+                    ? { ...p, orderStatus: restoredStatus }
+                    : p
+                )
+              }
+            : o
+        );
+        setOrders(updatedOrders);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+        console.log(`Artwork restored`);
+      }
+    }
+    else {
+      console.log(`Artwork not restored`);
+    }
+    
+    sessionStorage.removeItem("isEditMode");
     setChangeRequestModal({ isOpen: false, order: null, product: null });
   };
 
@@ -1007,47 +801,66 @@ const [confirmState, setConfirmState] = useState({
   const handleDeleteRequest = () => {
     const now = new Date().toISOString();
     const isEditMode = sessionStorage.getItem("isEditMode") === "true";
+    const currentOrder = changeRequestModal.order;
+    const currentProduct = changeRequestModal.product;
 
     if (isEditMode) {
-      // 🔥 CHANGE 1: In edit/re-edit mode, collect revised estimate then delete directly
-      const revisedEstimateNo = prompt("Enter Revised Estimated Number:");
-      if (!revisedEstimateNo || !revisedEstimateNo.trim()) {
-        alert("Revised Estimated Number is required.");
-        return;
-      }
-      const revisedEstimateValueStr = prompt("Enter Revised Estimated Value:");
-      const revisedEstimateValue = parseFloat(revisedEstimateValueStr);
-      if (isNaN(revisedEstimateValue) || revisedEstimateValue <= 0) {
-        alert("Please enter a valid Revised Estimated Value.");
-        return;
-      }
-
-      // Directly delete the product and update estimate — no change request
-      const updatedOrders = orders.map((o) =>
-        o.id === changeRequestModal.order.id
-          ? {
-              ...o,
-              orderEstimate: {
-                ...o.orderEstimate,
-                estimatedNumber: revisedEstimateNo.trim(),
-                estimatedValue: revisedEstimateValue,
-              },
-              products: o.products.filter(
-                (p) => p.id !== changeRequestModal.product.id
-              ),
-              invoices: [
-                ...(o.invoices || [])
-              ],
-            }
-          : o
+      const remainingProducts = currentOrder.products.filter(
+        (p) => p.id !== currentProduct.id
       );
 
-      setOrders(updatedOrders);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-      window.dispatchEvent(new Event("ordersUpdated"));
-      sessionStorage.removeItem("isEditMode");
-      handleCloseChangeRequest();
-      alert(`✅ Product deleted directly!\nEstimate: ${revisedEstimateNo}\nValue: ₹${revisedEstimateValue}`);
+      // 🔥 If this is the LAST product in the order
+      if (remainingProducts.length === 0) {
+        const hasPaymentRecords = currentOrder.paymentRecords && currentOrder.paymentRecords.length > 0;
+
+        // Close the change request modal first (skip restore since we're deleting)
+        handleCloseChangeRequest(true);
+
+        if (!hasPaymentRecords) {
+          // No payment → direct delete order modal
+          setDeleteOrderModal({
+            isOpen: true,
+            orderId: currentOrder.id,
+            order: currentOrder,
+          });
+        } else {
+          // Has payment → refund modal
+          setRefundModal({
+            isOpen: true,
+            orderId: currentOrder.id,
+            order: currentOrder,
+            refundRemarks: "",
+            refundDocument: null,
+            refundDocumentName: "",
+          });
+        }
+        return;
+      }
+
+      // 🔥 Multiple products remain → show EstimateRevisionModal (same as edit/change request)
+      setTempChangeRequest({
+        type: "delete",
+        timestamp: now,
+        orderId: currentOrder.id,
+        productId: currentProduct.id,
+        productDetails: currentProduct,
+        originalEstimate: currentOrder.orderEstimate,
+        isEditMode: true,
+      });
+      handleCloseChangeRequest(true); // close modal, skip restore
+      setEstimateRevisionModal({
+        isOpen: true,
+        revision: {
+          orderId: currentOrder.id,
+          productId: currentProduct.id,
+          productDetails: currentProduct,
+          triggerType: "delete",
+          timestamp: now,
+          originalEstimate: currentOrder.orderEstimate,
+          forceBlankEstimate: true,
+          isEditMode: true,
+        },
+      });
       return;
     }
 
@@ -1055,23 +868,23 @@ const [confirmState, setConfirmState] = useState({
     setTempChangeRequest({
       type: "delete",
       timestamp: now,
-      orderId: changeRequestModal.order.id,
-      productId: changeRequestModal.product.id,
-      productDetails: changeRequestModal.product,
-      originalEstimate: changeRequestModal.order.orderEstimate,
+      orderId: currentOrder.id,
+      productId: currentProduct.id,
+      productDetails: currentProduct,
+      originalEstimate: currentOrder.orderEstimate,
     });
-    handleCloseChangeRequest(); // Close without persisting
+    handleCloseChangeRequest(true); // Close without persisting
     // Open estimate modal
     setEstimateRevisionModal({
       isOpen: true,
       revision: {
-        orderId: changeRequestModal.order.id,
-        productId: changeRequestModal.product.id,
-        productDetails: changeRequestModal.product,
+        orderId: currentOrder.id,
+        productId: currentProduct.id,
+        productDetails: currentProduct,
         triggerType: "delete",
         timestamp: now,
-        originalEstimate: changeRequestModal.order.orderEstimate,
-        forceBlankEstimate: true, // 🔥 CHANGE 2: Force blank on delete
+        originalEstimate: currentOrder.orderEstimate,
+        forceBlankEstimate: true,
       },
     });
   };
@@ -1326,7 +1139,7 @@ const [confirmState, setConfirmState] = useState({
       isEditMode: isEditMode, // 🔥 MODE FLAG
     });
 
-    handleCloseChangeRequest();
+    handleCloseChangeRequest(true);
 
     // ✅ ALWAYS open estimate modal (for BOTH modes)
     setEstimateRevisionModal({
@@ -4601,10 +4414,12 @@ const [confirmState, setConfirmState] = useState({
         }
       : { ...localProduct, _wasArtworkApproved: undefined };
 
+    const now = new Date().toISOString();
     const updatedOrders = orders.map((o) =>
       o.id === tempChangeRequest.orderId
         ? {
           ...o,
+          updatedAt: now,
           orderEstimate: {
             ...o.orderEstimate,
             estimatedNumber: revisedEstimateNo,
@@ -4612,7 +4427,7 @@ const [confirmState, setConfirmState] = useState({
           },
           products: o.products.map((p) =>
             p.id === tempChangeRequest.productId
-              ? { ...p, ...finalProduct } // ✅ Apply all changes
+              ? { ...p, ...finalProduct, updatedAt: now } // ✅ Apply all changes + stamp date
               : p,
           ),
         }
@@ -4722,6 +4537,37 @@ const [confirmState, setConfirmState] = useState({
         parseFloat(estimatedValue) <= 0
       ) {
         alert("Please enter both valid Revised Estimate No & Value");
+        return;
+      }
+
+      // 🔥 Handle edit-mode delete: directly remove product and update estimate
+      if (isEditMode && revision.triggerType === "delete") {
+        const revisedEstimateNo = estimatedNumber.trim();
+        const revisedEstimateValue = parseFloat(estimatedValue);
+        const nowDel = new Date().toISOString();
+        const updatedOrders = orders.map((o) =>
+          o.id === revision.orderId
+            ? {
+                ...o,
+                updatedAt: nowDel,
+                orderEstimate: {
+                  ...o.orderEstimate,
+                  estimatedNumber: revisedEstimateNo,
+                  estimatedValue: revisedEstimateValue,
+                },
+                products: o.products.filter(
+                  (p) => p.id !== revision.productId
+                ),
+                invoices: [...(o.invoices || [])],
+              }
+            : o
+        );
+        setOrders(updatedOrders);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+        window.dispatchEvent(new Event("ordersUpdated"));
+        setEstimateRevisionModal({ isOpen: false, revision: null });
+        sessionStorage.removeItem("isEditMode");
+        alert(`✅ Product deleted!\nEstimate: ${revisedEstimateNo}\nValue: ₹${revisedEstimateValue}`);
         return;
       }
 
@@ -4918,6 +4764,7 @@ const [confirmState, setConfirmState] = useState({
     const [localRemarks, setLocalRemarks] = useState(refundModal.refundRemarks || "");
     const [localDoc, setLocalDoc] = useState(refundModal.refundDocument || null);
     const [localDocName, setLocalDocName] = useState(refundModal.refundDocumentName || "");
+    const [deletionReason, setDeletionReason] = useState("");
     const fileInputRef = useRef(null);
 
     if (!refundModal.isOpen) return null;
@@ -4934,6 +4781,10 @@ const [confirmState, setConfirmState] = useState({
     };
 
     const handleSubmit = () => {
+      if (!deletionReason.trim()) {
+        alert("Please enter the reason for deletion.");
+        return;
+      }
       if (!localRemarks.trim()) {
         alert("Please enter refund remarks.");
         return;
@@ -4942,13 +4793,14 @@ const [confirmState, setConfirmState] = useState({
         alert("Please upload a payment/refund document.");
         return;
       }
-      // Send delete request with refund info
+      // Save order with refund info + deletion reason (locally, not sent as request)
       const updatedOrders = orders.map((o) =>
         o.id === refundModal.orderId
           ? {
               ...o,
               productDeleted: true,
               deleteRequestedAt: new Date().toISOString(),
+              deletionReason: deletionReason.trim(),
               refundInfo: {
                 remarks: localRemarks,
                 document: localDoc,
@@ -4958,11 +4810,28 @@ const [confirmState, setConfirmState] = useState({
             }
           : o,
       );
+      // Store refunded orders separately for "Order Refund Details" viewer
+      const existingRefunded = JSON.parse(localStorage.getItem("imlorders_refunded") || "[]");
+      const thisOrder = refundModal.order;
+      const refundedEntry = {
+        ...thisOrder,
+        productDeleted: true,
+        deleteRequestedAt: new Date().toISOString(),
+        deletionReason: deletionReason.trim(),
+        refundInfo: {
+          remarks: localRemarks,
+          document: localDoc,
+          documentName: localDocName,
+          submittedAt: new Date().toISOString(),
+        },
+      };
+      localStorage.setItem("imlorders_refunded", JSON.stringify([...existingRefunded, refundedEntry]));
+
       setOrders(updatedOrders);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
       window.dispatchEvent(new Event("ordersUpdated"));
       setRefundModal({ isOpen: false, orderId: null, order: null, refundRemarks: "", refundDocument: null, refundDocumentName: "" });
-      alert("✅ Delete request with refund details sent! Admin will review this request.");
+      alert("✅ Order deletion recorded with refund details. Admin will review.");
     };
 
     return (
@@ -4985,14 +4854,28 @@ const [confirmState, setConfirmState] = useState({
           {/* Notice */}
           <div className="bg-amber-50 border-b border-amber-200 px-[1.5vw] py-[0.75vw]">
             <p className="text-[0.85vw] text-amber-800 font-medium">
-              ⚠️ This order has payment records. To request deletion, you must provide refund details. The admin will review before confirming.
+              ⚠️ This order has payment records. Please provide the deletion reason and refund details. These will be saved locally for reference.
             </p>
           </div>
 
-         
-
           {/* Form */}
           <div className="px-[1.5vw] py-[1vw] space-y-[1vw]">
+
+            {/* Reason for Deletion (local only, not sent as request) */}
+            <div>
+              <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">
+                Reason for Order Deletion <span className="text-red-500">*</span>
+                <span className="ml-2 text-[0.75vw] text-gray-400 font-normal">(stored locally)</span>
+              </label>
+              <textarea
+                value={deletionReason}
+                onChange={(e) => setDeletionReason(e.target.value)}
+                rows={2}
+                placeholder="Explain why this order is being deleted..."
+                className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+              />
+            </div>
+
             {/* Refund Remarks */}
             <div>
               <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">
@@ -5002,7 +4885,7 @@ const [confirmState, setConfirmState] = useState({
                 value={localRemarks}
                 onChange={(e) => setLocalRemarks(e.target.value)}
                 rows={3}
-                placeholder="Explain the reason for deletion and refund details..."
+                placeholder="Explain the refund details, amount to be returned, etc..."
                 className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
               />
             </div>
@@ -5051,14 +4934,210 @@ const [confirmState, setConfirmState] = useState({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!localRemarks.trim() || !localDoc}
+              disabled={!deletionReason.trim() || !localRemarks.trim() || !localDoc}
               className={`px-[1.25vw] py-[0.5vw] text-[0.85vw] rounded-lg font-bold transition-all cursor-pointer ${
-                localRemarks.trim() && localDoc
+                deletionReason.trim() && localRemarks.trim() && localDoc
                   ? "bg-red-600 text-white hover:bg-red-700 shadow-md"
                   : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}
             >
-              Send Delete Request
+              Save Deletion Record
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 🔥 NEW: Refund Details Viewer Modal
+  const RefundDetailsModal = () => {
+    if (!refundDetailsModal.isOpen) return null;
+
+    const refundedOrders = JSON.parse(localStorage.getItem("imlorders_refunded") || "[]");
+
+    return (
+      <div className="fixed inset-0 bg-[#000000b3] z-[50009] flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-[1.5vw] py-[1vw] flex items-center justify-between flex-shrink-0">
+            <div>
+              <h2 className="text-[1.25vw] font-bold text-white">💰 Order Refund Details</h2>
+              <p className="text-[0.85vw] text-emerald-100 mt-[0.2vw]">
+                All orders deleted with payment/refund records
+              </p>
+            </div>
+            <button
+              onClick={() => setRefundDetailsModal({ isOpen: false })}
+              className="text-white hover:text-emerald-200 text-[1.8vw] font-bold cursor-pointer leading-none"
+            >×</button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-[1.5vw] space-y-[1.25vw]">
+            {refundedOrders.length === 0 ? (
+              <div className="text-center py-[4vw]">
+                <div className="text-[3vw] mb-[1vw]">💸</div>
+                <h3 className="text-[1.1vw] font-bold text-gray-700 mb-[0.4vw]">No Refund Records</h3>
+                <p className="text-[0.9vw] text-gray-500">No orders have been deleted with refund details yet.</p>
+              </div>
+            ) : (
+              refundedOrders.map((order, idx) => (
+                <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                  {/* Order Header */}
+                  <div className="bg-red-50 border-b border-red-200 px-[1.25vw] py-[0.75vw] flex items-center justify-between">
+                    <div>
+                      <h3 className="text-[1vw] font-bold text-red-800">
+                        🗑️ {order.orderNumber || order.id}
+                      </h3>
+                      <p className="text-[0.8vw] text-gray-600 mt-[0.1vw]">
+                        <strong>{order.contact?.company}</strong> — {order.contact?.contactName} ({order.contact?.phone})
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      {order.deleteRequestedAt && (
+                        <p className="text-[0.75vw] text-gray-500">
+                          Deleted: {new Date(order.deleteRequestedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      )}
+                      <span className="inline-block mt-[0.25vw] px-[0.6vw] py-[0.2vw] bg-red-100 text-red-700 text-[0.75vw] font-semibold rounded-full">
+                        Deleted with Refund
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-[1.25vw] space-y-[1vw]">
+                    {/* Order Estimate */}
+                    <div className="grid grid-cols-3 gap-[1vw] bg-gray-50 rounded-lg p-[0.75vw]">
+                      <div>
+                        <p className="text-[0.75vw] text-gray-500">Estimate No.</p>
+                        <p className="text-[0.85vw] font-semibold text-gray-800">{order.orderEstimate?.estimatedNumber || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[0.75vw] text-gray-500">Estimate Value</p>
+                        <p className="text-[0.85vw] font-semibold text-blue-700">₹{(order.orderEstimate?.estimatedValue || 0).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-[0.75vw] text-gray-500">Priority</p>
+                        <p className="text-[0.85vw] font-semibold text-gray-800 capitalize">{order.contact?.priority || "—"}</p>
+                      </div>
+                    </div>
+
+                    {/* Deletion Reason */}
+                    {order.deletionReason && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg px-[1vw] py-[0.6vw]">
+                        <p className="text-[0.75vw] text-red-600 font-semibold mb-[0.2vw]">Reason for Deletion</p>
+                        <p className="text-[0.85vw] text-gray-800">{order.deletionReason}</p>
+                      </div>
+                    )}
+
+                    {/* Refund Info */}
+                    {order.refundInfo && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg px-[1vw] py-[0.6vw] space-y-[0.4vw]">
+                        <p className="text-[0.75vw] text-orange-600 font-semibold">Refund Details</p>
+                        <div>
+                          <p className="text-[0.75vw] text-gray-500">Remarks</p>
+                          <p className="text-[0.85vw] text-gray-800">{order.refundInfo.remarks}</p>
+                        </div>
+                        {order.refundInfo.documentName && (
+                          <div className="flex items-center gap-[0.5vw]">
+                            <span className="text-[0.75vw] text-gray-500">Document:</span>
+                            <a
+                              href={order.refundInfo.document}
+                              download={order.refundInfo.documentName}
+                              className="text-[0.8vw] text-blue-600 hover:text-blue-800 underline flex items-center gap-[0.3vw]"
+                            >
+                              📎 {order.refundInfo.documentName}
+                            </a>
+                          </div>
+                        )}
+                        <p className="text-[0.72vw] text-gray-400">
+                          Submitted: {new Date(order.refundInfo.submittedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Products */}
+                    {order.products && order.products.length > 0 && (
+                      <div>
+                        <p className="text-[0.8vw] font-semibold text-gray-700 mb-[0.4vw]">Products ({order.products.length})</p>
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="w-full border-collapse text-[0.8vw]">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Product</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Size</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">IML Name</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">IML Type</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.products.map((p, pidx) => (
+                                <tr key={pidx} className="hover:bg-gray-50">
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{p.productName}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{p.size}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{p.imlName}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{p.imlType}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">
+                                    <span className={`inline-block px-[0.4vw] py-[0.15vw] rounded text-[0.75vw] font-semibold ${p.orderStatus === "Artwork Approved" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                                      {p.orderStatus || "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Payment Records */}
+                    {order.paymentRecords && order.paymentRecords.length > 0 && (
+                      <div>
+                        <p className="text-[0.8vw] font-semibold text-gray-700 mb-[0.4vw]">Payment Records ({order.paymentRecords.length})</p>
+                        <div className="overflow-x-auto rounded-lg border border-gray-200">
+                          <table className="w-full border-collapse text-[0.8vw]">
+                            <thead>
+                              <tr className="bg-green-50">
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Type</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Method</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Amount</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Remarks</th>
+                                <th className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-left font-semibold">Date</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.paymentRecords.map((rec, ridx) => (
+                                <tr key={ridx} className="hover:bg-gray-50">
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw] capitalize">{rec.paymentType}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{rec.method || "—"}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw] font-semibold text-green-700">
+                                    {rec.paymentType === "advance" ? `₹${parseFloat(rec.amount || 0).toLocaleString()}` : "PO"}
+                                  </td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw]">{rec.remarks || "—"}</td>
+                                  <td className="border border-gray-200 px-[0.75vw] py-[0.5vw] text-gray-500">
+                                    {rec.timestamp ? new Date(rec.timestamp).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 px-[1.5vw] py-[1vw] border-t border-gray-200 bg-gray-50 flex justify-end">
+            <button
+              onClick={() => setRefundDetailsModal({ isOpen: false })}
+              className="px-[1.5vw] py-[0.6vw] bg-gray-600 text-white rounded-lg text-[0.85vw] font-semibold hover:bg-gray-700 cursor-pointer transition-all"
+            >
+              Close
             </button>
           </div>
         </div>
@@ -5067,10 +5146,12 @@ const [confirmState, setConfirmState] = useState({
   };
 
   const OrderDeletionModal = () => {
+    const [deletionReason, setDeletionReason] = useState("");
+
     return (
       <div className="fixed inset-0 bg-[#000000b3] z-[50007] flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
-          <div className="text-center mb-8">
+          <div className="text-center mb-6">
             <div className="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <span className="text-3xl text-red-600">⚠️</span>
             </div>
@@ -5084,6 +5165,20 @@ const [confirmState, setConfirmState] = useState({
               This will <strong>permanently delete</strong>{" "}
               {deleteOrderModal.order?.products?.length || 0} products.
             </p>
+          </div>
+
+          {/* Reason for Deletion */}
+          <div className="mb-6">
+            <label className="block text-[0.9vw] font-semibold text-gray-700 mb-[0.4vw]">
+              Reason for Deletion <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={deletionReason}
+              onChange={(e) => setDeletionReason(e.target.value)}
+              rows={3}
+              placeholder="Please provide the reason for deleting this order..."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+            />
           </div>
 
           <div className="flex gap-4">
@@ -5100,11 +5195,18 @@ const [confirmState, setConfirmState] = useState({
               Cancel
             </button>
             <button
+              disabled={!deletionReason.trim()}
               onClick={() => {
+                if (!deletionReason.trim()) return;
+                // Store reason on the order object before proceeding to invoices
+                const orderWithReason = {
+                  ...deleteOrderModal.order,
+                  deletionReason: deletionReason.trim(),
+                };
                 // ✅ PROCEED TO INVOICE CREATION
                 setOrderInvoiceModal({
                   isOpen: true,
-                  order: deleteOrderModal.order,
+                  order: orderWithReason,
                 });
                 setDeleteOrderModal({
                   isOpen: false,
@@ -5112,7 +5214,11 @@ const [confirmState, setConfirmState] = useState({
                   order: null,
                 });
               }}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:shadow-xl font-bold transition-all"
+              className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all ${
+                deletionReason.trim()
+                  ? "bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-xl cursor-pointer"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
             >
               Continue to Invoices
             </button>
@@ -6573,6 +6679,7 @@ const [confirmState, setConfirmState] = useState({
   // Handle form submission from NewOrder component
   const handleOrderSubmit = (orderData) => {
     let isNotShowAlert = false;
+    const now = new Date().toISOString();
 
     if (editingOrder) {
       // Update existing order
@@ -6585,14 +6692,17 @@ const [confirmState, setConfirmState] = useState({
         order.id === editingOrder.id
           ? {
             ...orderData,
-            ...orderData,
             id: editingOrder.id,
             createdAt: isValidDate(order.createdAt)
               ? order.createdAt
               : isValidDate(editingOrder.createdAt)
                 ? editingOrder.createdAt
-                : new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+                : now,
+            updatedAt: now,
+            products: (orderData.products || []).map((p) => ({
+              ...p,
+              updatedAt: p.updatedAt || now,
+            })),
           }
           : order,
       );
@@ -6603,13 +6713,15 @@ const [confirmState, setConfirmState] = useState({
       alert("Your order has been updated");
     } else {
       // Add new order
-      const now = new Date().toISOString();
-
       const newOrder = {
         ...orderData,
         id: Date.now(),
         createdAt: now,
         updatedAt: now,
+        products: (orderData.products || []).map((p) => ({
+          ...p,
+          updatedAt: now,
+        })),
       };
       setOrders([...orders, newOrder]);
     }
@@ -6619,18 +6731,22 @@ const [confirmState, setConfirmState] = useState({
       alert("Your order has been created");
     }
     setEditingOrder(null);
+    // Restore scroll position after dashboard renders
+    setTimeout(() => { window.scrollTo(0, scrollPositionRef.current); }, 0);
   };
 
   // Handle cancel from form
   const handleCancel = () => {
     setView("dashboard");
     setEditingOrder(null);
+    setTimeout(() => { window.scrollTo(0, scrollPositionRef.current); }, 0);
   };
 
   // Handle cancel from form
   const handleBack = () => {
     setView("dashboard");
     setEditingOrder(null);
+    setTimeout(() => { window.scrollTo(0, scrollPositionRef.current); }, 0);
   };
 
   const toggleCompany = (companyName) => {
@@ -6963,7 +7079,7 @@ const [confirmState, setConfirmState] = useState({
       <div className="fixed inset-0 bg-[#00000096] bg-opacity-50 flex items-center justify-center z-[9999] p-[1vw]">
         <div className="bg-white rounded-[1vw] w-full max-w-[70vw] max-h-[90vh] overflow-y-auto">
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-[1.25vw] py-[1vw] rounded-t-[1vw] flex justify-between items-center">
+          <div className="sticky z-[99] top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-[1.25vw] py-[1vw] rounded-t-[1vw] flex justify-between items-center">
             <h2 className="text-[1.35vw] font-semibold">Payment Management</h2>
             <button
               onClick={onClose}
@@ -7633,6 +7749,13 @@ const [confirmState, setConfirmState] = useState({
                 </button>
 
                 <button
+                  onClick={() => setRefundDetailsModal({ isOpen: true })}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-[1.25vw] py-[.5vw] rounded-lg font-bold shadow-lg text-[.9vw] cursor-pointer"
+                >
+                  💰 Order Refund Details
+                </button>
+
+                <button
                   onClick={handleNewOrder}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-[.85vw] py-[0.45vw] rounded-[0.6vw] font-medium shadow-md hover:shadow-lg transition-all text-[0.9vw] cursor-pointer"
                 >
@@ -7900,6 +8023,20 @@ const [confirmState, setConfirmState] = useState({
                                         {order.orderEstimate?.estimatedValue}
                                       </span>
                                     </div>
+                                    <div className="flex gap-6 mt-2 text-[.85vw] text-gray-500">
+                                      {order.createdAt && (
+                                        <span>
+                                          <strong>Created:</strong>{" "}
+                                          {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                        </span>
+                                      )}
+                                      {order.updatedAt && (
+                                        <span>
+                                          <strong>Last Updated:</strong>{" "}
+                                          {new Date(order.updatedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
 
@@ -8050,6 +8187,12 @@ const [confirmState, setConfirmState] = useState({
                                             <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
                                               Order Status
                                             </th>
+
+                                            {viewMode === "all" && (
+                                              <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
+                                                Last Updated
+                                              </th>
+                                            )}
 
                                             <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center text-[.85vw] font-semibold">
                                               Action
@@ -8249,6 +8392,13 @@ const [confirmState, setConfirmState] = useState({
                                                         "Artwork Pending"}
                                                     </span>
                                                   </td>
+                                                  {viewMode === "all" && (
+                                                    <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.8vw] text-gray-500 text-center whitespace-nowrap">
+                                                      {product.updatedAt
+                                                        ? new Date(product.updatedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                                                        : "—"}
+                                                    </td>
+                                                  )}
                                                   {viewMode === "remaining" ? (
                                                     <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-center">
                                                       <div className="flex gap-2 items-center">
@@ -8464,6 +8614,7 @@ const [confirmState, setConfirmState] = useState({
       <ProductDeleteConfirmModal />
       <AllInvoicesModal />
       {refundModal.isOpen && <RefundModal />}
+      <RefundDetailsModal />
 
 
       {changeRequestModal.isOpen && <ChangeRequestModal />}

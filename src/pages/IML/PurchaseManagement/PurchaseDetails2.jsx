@@ -1090,92 +1090,115 @@ const PurchaseManagement = () => {
     <div className="min-h-screen bg-gray-50 p-[1vw]">
       {/* Header */}
       <div className="mb-[1vw]">
-        <div className="flex justify-between items-center mb-[.5vw] relative">
-          <div className="flex items-center gap-[.75vw] ">
-            <h1 className="text-[1.6vw] font-bold text-gray-900">
-              Purchase Management
-            </h1>
+      <div className="flex justify-between items-center mb-[.5vw] relative">
+  <div className="flex items-center gap-[.75vw]">
+    <h1 className="text-[1.6vw] font-bold text-gray-900">
+      Purchase Management
+    </h1>
 
-            <button
-              onClick={() => {
-                console.log("🔄 Manual refresh clicked");
-                loadPurchaseOrders();
-              }}
-              className="px-[.75vw] py-[.4vw] bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[.75vw] font-medium transition-all flex items-center gap-1 cursor-pointer"
-            >
-              <svg
-                className="w-[1vw] h-[1vw]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              Refresh
-            </button>
+    <button
+      onClick={() => {
+        console.log("🔄 Manual refresh clicked");
+        loadPurchaseOrders();
+      }}
+      className="px-[.75vw] py-[.4vw] bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[.75vw] font-medium transition-all flex items-center gap-1 cursor-pointer"
+    >
+      <svg
+        className="w-[1vw] h-[1vw]"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+        />
+      </svg>
+      Refresh
+    </button>
 
-            <span className="text-[.75vw] bg-blue-100 text-blue-800 px-2 py-1 rounded">
-              {purchaseOrders.length} orders loaded
-            </span>
-          </div>
-          {/* Sheet Toggle Buttons */}
-          <div className="flex gap-[1vw] absolute right-[2%] mt-[-.5%]">
-            <button
-              onClick={() => setActiveSheet("po")}
-              className={`flex-1 px-[1vw] py-[.65vw] rounded-lg font-semibold text-[.9vw] transition-all duration-200 cursor-pointer border-2 ${activeSheet === "po"
-                  ? "bg-blue-600 text-white border-blue-700 shadow-md"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <svg
-                  className="w-[1.2vw] h-[1.2vw]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <span>PO Sheet</span>
-              </div>
-            </button>
+    <span className="text-[.75vw] bg-blue-100 text-blue-800 px-2 py-1 rounded">
+      {purchaseOrders.length} orders loaded
+    </span>
+  </div>
 
-            <button
-              onClick={() => setActiveSheet("label")}
-              className={`flex-1 px-[1vw] py-[.65vw] rounded-lg font-semibold text-[.9vw] transition-all duration-200 cursor-pointer border-2 min-w-[13vw] ${activeSheet === "label"
-                  ? "bg-green-600 text-white border-green-700 shadow-md"
-                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <svg
-                  className="w-[1.2vw] h-[1.2vw]"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                  />
-                </svg>
-                <span>Label Quantity Sheet</span>
-              </div>
-            </button>
-          </div>
-        </div>
+  {/* Sheet Toggle Buttons */}
+  <div className="flex gap-[.6vw] absolute right-[2%] mt-[-.5%]">
+    <button
+      onClick={() => setActiveSheet("po")}
+      className={`relative px-[1vw] py-[.65vw] rounded-lg font-semibold text-[.9vw] cursor-pointer transition-all duration-300 ease-in-out ${
+        activeSheet === "po"
+          ? "bg-blue-600 text-white border-2 border-blue-700 shadow-lg shadow-blue-200 scale-[1.03]"
+          : "bg-white text-gray-700 border-2 border-gray-300 shadow-sm hover:border-blue-400 hover:shadow-md hover:shadow-blue-100 hover:text-blue-600 hover:scale-[1.02]"
+      }`}
+    >
+      <div className="flex items-center justify-center gap-2">
+        <svg
+          className={`w-[1.2vw] h-[1.2vw] transition-transform duration-300 ${
+            activeSheet === "po" ? "scale-110" : "scale-100"
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+        <span>PO Sheet</span>
+      </div>
+
+      {/* Active indicator */}
+      {activeSheet === "po" && (
+        <span className="absolute -top-[.3vw] -right-[.3vw] flex h-[.5vw] w-[.5vw]">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-[.5vw] w-[.5vw] bg-blue-500"></span>
+        </span>
+      )}
+    </button>
+
+    <button
+      onClick={() => setActiveSheet("label")}
+      className={`relative px-[1vw] py-[.65vw] rounded-lg font-semibold text-[.9vw] cursor-pointer min-w-[13vw] transition-all duration-300 ease-in-out ${
+        activeSheet === "label"
+          ? "bg-green-600 text-white border-2 border-green-700 shadow-lg shadow-green-200 scale-[1.03]"
+          : "bg-white text-gray-700 border-2 border-gray-300 shadow-sm hover:border-green-400 hover:shadow-md hover:shadow-green-100 hover:text-green-600 hover:scale-[1.02]"
+      }`}
+    >
+      <div className="flex items-center justify-center gap-2">
+        <svg
+          className={`w-[1.2vw] h-[1.2vw] transition-transform duration-300 ${
+            activeSheet === "label" ? "scale-110" : "scale-100"
+          }`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+          />
+        </svg>
+        <span>Label Quantity Sheet</span>
+      </div>
+
+      {/* Active indicator */}
+      {activeSheet === "label" && (
+        <span className="absolute -top-[.3vw] -right-[.3vw] flex h-[.5vw] w-[.5vw]">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-[.5vw] w-[.5vw] bg-green-500"></span>
+        </span>
+      )}
+    </button>
+  </div>
+</div> 
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
