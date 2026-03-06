@@ -1414,22 +1414,32 @@ return (
                           </label>
                           <div className="grid grid-cols-2 gap-[2vw]">
                             <div>
-                              <FileUploadBox
-                                file={localProduct.lidDesignFile}
-                                onFileChange={(file) => {
-                                  if (localProduct.useLinkedDesign) return;
-                                  updateLocalField("lidDesignFile", file);
-                                  if (file?.type === "application/pdf") {
-                                    generatePdfThumbnail(
-                                      file,
-                                      `${localProduct.id}-lid`,
-                                    );
-                                  }
-                                }}
-                                productId={`${localProduct.id}-lid`}
-                                small
-                                disabled={localProduct.useLinkedDesign}
-                              />
+                              <div className="relative">
+                                <FileUploadBox
+                                  file={localProduct.lidDesignFile}
+                                  onFileChange={(file) => {
+                                    if (localProduct.useLinkedDesign) return;
+                                    updateLocalField("lidDesignFile", file);
+                                    if (file?.type === "application/pdf") {
+                                      generatePdfThumbnail(
+                                        file,
+                                        `${localProduct.id}-lid`,
+                                      );
+                                    }
+                                  }}
+                                  productId={`${localProduct.id}-lid`}
+                                  small
+                                  disabled={localProduct.useLinkedDesign}
+                                />
+                                {localProduct.useLinkedDesign && (
+                                  <div className="absolute inset-0 bg-gray-100/80 rounded-lg flex flex-col items-center justify-center gap-[0.3vw] border-2 border-gray-300 border-dashed cursor-not-allowed z-10">
+                                    <svg className="w-[1.4vw] h-[1.4vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                    <span className="text-[0.72vw] text-gray-500 font-medium text-center px-[0.5vw]">Locked — Unlink to change</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div>
                               {localProduct.lidDesignFile && (
@@ -1453,6 +1463,7 @@ return (
                             </label>
                             <div className="grid grid-cols-2 gap-[2vw]">
                               <div>
+                                <div className="relative">
                                 <FileUploadBox
                                   file={localProduct.tubDesignFile}
                                   onFileChange={(file) => {
@@ -1469,6 +1480,15 @@ return (
                                   small
                                   disabled={localProduct.useLinkedDesign}
                                 />
+                                {localProduct.useLinkedDesign && (
+                                  <div className="absolute inset-0 bg-gray-100/80 rounded-lg flex flex-col items-center justify-center gap-[0.3vw] border-2 border-gray-300 border-dashed cursor-not-allowed z-10">
+                                    <svg className="w-[1.4vw] h-[1.4vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                    </svg>
+                                    <span className="text-[0.72vw] text-gray-500 font-medium text-center px-[0.5vw]">Locked — Unlink to change</span>
+                                  </div>
+                                )}
+                                </div>
                               </div>
                               <div>
                                 {localProduct.tubDesignFile && (
@@ -1493,6 +1513,7 @@ return (
                         </label>
                         <div className="grid grid-cols-2 gap-[2vw]">
                           <div>
+                            <div className="relative">
                             <FileUploadBox
                               file={localProduct.lidDesignFile}
                               onFileChange={(file) => {
@@ -1509,6 +1530,15 @@ return (
                               small
                               disabled={localProduct.useLinkedDesign}
                             />
+                            {localProduct.useLinkedDesign && (
+                              <div className="absolute inset-0 bg-gray-100/80 rounded-lg flex flex-col items-center justify-center gap-[0.3vw] border-2 border-gray-300 border-dashed cursor-not-allowed z-10">
+                                <svg className="w-[1.4vw] h-[1.4vw] text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                <span className="text-[0.72vw] text-gray-500 font-medium text-center px-[0.5vw]">Locked — Unlink to change</span>
+                              </div>
+                            )}
+                            </div>
                           </div>
                           <div>
                             {localProduct.lidDesignFile && (

@@ -16,6 +16,7 @@ const ProductionManagement = () => {
   const [selectedProduct, setSelectedProduct] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedOrigin, setSelectedOrigin] = useState("");
+  const [selectedProductionStatus, setSelectedProductionStatus] = useState("");
 
   const [activeSheet, setActiveSheet] = useState("tracking");
 
@@ -30,6 +31,24 @@ const ProductionManagement = () => {
     const numStr = String(value).replace(/,/g, "");
     const num = Number(numStr);
     return isNaN(num) ? 0 : num;
+  };
+
+  // Format any date string (ISO, dd/mm/yyyy, dd-mm-yyyy) → "DD-MMM-YYYY"
+  const formatDate = (raw) => {
+    if (!raw) return "—";
+    try {
+      // Already formatted like "5/3/2026" or "05/03/2026" (en-IN locale)
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
+        const [d, m, y] = raw.split("/");
+        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        return `${String(d).padStart(2,"0")}-${months[parseInt(m,10)-1]}-${y}`;
+      }
+      // ISO string
+      const dt = new Date(raw);
+      if (isNaN(dt.getTime())) return raw;
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      return `${String(dt.getDate()).padStart(2,"0")}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
+    } catch { return raw; }
   };
 
   const getAllocationData = (orderId, productId) => {
@@ -108,7 +127,7 @@ const ProductionManagement = () => {
     return { lidTotal, tubTotal, total: lidTotal + tubTotal };
   };
 
-  // ── NEW: Get label order qty (lidLabelQty / tubLabelQty) from imlorders ──
+  // ── Get label order qty (lidLabelQty / tubLabelQty) from imlorders ──
   const getLabelOrderQty = (orderId, productId) => {
     try {
       const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || "[]");
@@ -124,18 +143,31 @@ const ProductionManagement = () => {
     }
   };
 
-  // ── NEW: Get production status directly from the product's orderStatus ──
-  const getProductionStatusFromOrder = (orderId, productId) => {
+  // ── Get production status per component for LID & TUB, or overall for single ──
+  // For LID & TUB: checks lidOrderStatus / tubOrderStatus on the product
+  // For single types: checks orderStatus
+  const getComponentStatus = (orderId, productId, componentType) => {
     try {
       const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_ORDERS) || "[]");
       const order = orders.find((o) => o.id === orderId);
       const product = order?.products?.find((p) => p.id === productId);
-      const status = product?.orderStatus || "";
+      if (!product) return "Production Pending";
 
+      // For LID & TUB, use component-specific status fields
+      if (product.imlType === "LID & TUB") {
+        const statusField = componentType === "LID" ? "lidOrderStatus" : "tubOrderStatus";
+        const status = product[statusField] || "";
+        if (status === "Production Completed") return "Production Completed";
+        if (status === "In Production") return "In Production";
+        if (status === "Dispatch Pending") return "Production Completed";
+        return "Production Pending";
+      }
+
+      // For single types, use the shared orderStatus
+      const status = product?.orderStatus || "";
       if (status === "Production Completed") return "Production Completed";
       if (status === "In Production") return "In Production";
       if (status === "Dispatch Pending") return "Production Completed";
-      // Default: not yet started
       return "Production Pending";
     } catch {
       return "Production Pending";
@@ -145,16 +177,16 @@ const ProductionManagement = () => {
   // Load production data
   const loadProductionData = () => {
     const storedOrders = localStorage.getItem(STORAGE_KEY_ORDERS);
-    const storedLabelQty = localStorage.getItem(STORAGE_KEY_LABEL_QTY);
 
-    if (!storedOrders || !storedLabelQty) {
+    if (!storedOrders) {
       setProductionData([]);
       return;
     }
 
     try {
       const allOrders = JSON.parse(storedOrders);
-      const labelData = JSON.parse(storedLabelQty);
+      const storedLabelQty = localStorage.getItem(STORAGE_KEY_LABEL_QTY);
+      const labelData = storedLabelQty ? JSON.parse(storedLabelQty) : {};
       const productionItems = [];
 
       allOrders.forEach((order) => {
@@ -164,6 +196,42 @@ const ProductionManagement = () => {
 
           const allocationData = getAllocationData(order.id, product.id);
           const hasAllocations = allocationData.totalAllocated > 0;
+
+          // ── NEW: Products in purchase but labels NOT yet received → show as "Awaiting for Labels" ──
+          if (!labelInfo && !hasAllocations && product.moveToPurchase) {
+            productionItems.push({
+              id: `${key}_awaiting`,
+              originalId: key,
+              orderId: order.id,
+              productId: product.id,
+              orderNumber: order.orderNumber,
+              companyName: order.contact.company,
+              productCategory: product.productName,
+              size: product.size,
+              imlName: product.imlName,
+              imlType: product.imlType,
+              lidColor: product.lidColor || "N/A",
+              tubColor: product.tubColor || "N/A",
+              labelType: product.imlType,
+              orderQuantity: 0,
+              receivedQuantity: 0,
+              allReceived: false,
+              lidTotal: 0,
+              tubTotal: 0,
+              lidRemaining: 0,
+              tubRemaining: 0,
+              remainingLabels: 0,
+              lidLabelQty: toNumber(product.lidLabelQty || 0),
+              tubLabelQty: toNumber(product.tubLabelQty || 0),
+              origin: "Main Order",
+              isFromRemaining: false,
+              followups: 0,
+              historyCount: 0,
+              isAwaitingLabels: true, // ← flag to render differently
+              lastUpdated: null,
+            });
+            return;
+          }
 
           if (!labelInfo && !hasAllocations) return;
 
@@ -229,6 +297,24 @@ const ProductionManagement = () => {
                 isFromRemaining: false,
                 followups: mainFollowups.length,
                 historyCount: labelInfo.history ? labelInfo.history.length : 0,
+                lastUpdated: (() => {
+                  if (product.imlType === "LID & TUB") {
+                    // Per-component last entry dates
+                    const lidEntries = mainFollowups.filter(e => e.componentType === "LID");
+                    const tubEntries = mainFollowups.filter(e => e.componentType === "TUB");
+                    const fallback = (labelInfo.history && labelInfo.history.length > 0)
+                      ? (labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null)
+                      : null;
+                    return {
+                      lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || fallback : fallback,
+                      tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || fallback : fallback,
+                    };
+                  }
+                  if (mainFollowups.length > 0) return mainFollowups[mainFollowups.length - 1].date || null;
+                  if (labelInfo.history && labelInfo.history.length > 0)
+                    return labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null;
+                  return null;
+                })(),
               });
             }
           }
@@ -299,6 +385,17 @@ const ProductionManagement = () => {
               origin: "Remaining Allocation",
               isFromRemaining: true,
               followups: remainingFollowups.length,
+              lastUpdated: (() => {
+                if (product.imlType === "LID & TUB") {
+                  const lidEntries = remainingFollowups.filter(e => e.componentType === "LID");
+                  const tubEntries = remainingFollowups.filter(e => e.componentType === "TUB");
+                  return {
+                    lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || null : null,
+                    tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || null : null,
+                  };
+                }
+                return remainingFollowups.length > 0 ? remainingFollowups[remainingFollowups.length - 1].date || null : null;
+              })(),
             });
           }
         });
@@ -400,12 +497,29 @@ const ProductionManagement = () => {
             return item.origin === selectedOrigin;
           });
 
-          if (originFilteredItems.length > 0) {
+          const statusFilteredItems = originFilteredItems.filter((item) => {
+            if (!selectedProductionStatus) return true;
+            if (selectedProductionStatus === "Awaiting Labels") return !!item.isAwaitingLabels;
+            if (item.isAwaitingLabels) return false;
+            if (item.imlType === "LID & TUB") {
+              const lidStatus = getComponentStatus(item.orderId, item.productId, "LID");
+              const tubStatus = getComponentStatus(item.orderId, item.productId, "TUB");
+              if (selectedProductionStatus === "Production Completed") return lidStatus === "Production Completed" && tubStatus === "Production Completed";
+              if (selectedProductionStatus === "In Production") return lidStatus === "In Production" || tubStatus === "In Production";
+              if (selectedProductionStatus === "Production Pending") return lidStatus === "Production Pending" || tubStatus === "Production Pending";
+            } else {
+              const status = getComponentStatus(item.orderId, item.productId, null);
+              return status === selectedProductionStatus;
+            }
+            return true;
+          });
+
+          if (statusFilteredItems.length > 0) {
             if (!filtered[category]) filtered[category] = {};
             if (!filtered[category][size]) filtered[category][size] = {};
 
-            const mainItems = originFilteredItems.filter((item) => !item.isFromRemaining);
-            const remainingItems = originFilteredItems.filter((item) => item.isFromRemaining);
+            const mainItems = statusFilteredItems.filter((item) => !item.isFromRemaining);
+            const remainingItems = statusFilteredItems.filter((item) => item.isFromRemaining);
 
             if (mainItems.length > 0) filtered[category][size][color] = mainItems;
             if (remainingItems.length > 0) filtered[category][size][`${color} (Remaining)`] = remainingItems;
@@ -442,6 +556,8 @@ const ProductionManagement = () => {
           imlName: item.imlName.replace(" (Remaining)", ""),
           imlType: item.imlType,
           containerColor: `Lid: ${item.lidColor}, Tub: ${item.tubColor}`,
+          lidColor: item.lidColor,
+          tubColor: item.tubColor,
           lidRemaining: item.lidRemaining,
           tubRemaining: item.tubRemaining,
           lidTotalLabels: item.lidTotal,
@@ -464,9 +580,9 @@ const ProductionManagement = () => {
   const filteredHierarchy = getFilteredHierarchy();
   const hasData = Object.keys(filteredHierarchy).length > 0;
 
-  // ── Render helper: production status badge ──
-  const renderProductionStatusBadge = (orderId, productId) => {
-    const status = getProductionStatusFromOrder(orderId, productId);
+  // ── Render helper: production status badge — component-aware for LID & TUB ──
+  const renderProductionStatusBadge = (orderId, productId, componentType = null) => {
+    const status = getComponentStatus(orderId, productId, componentType);
     if (status === "Production Completed") {
       return (
         <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 rounded text-[.75vw] font-semibold">
@@ -512,7 +628,7 @@ const ProductionManagement = () => {
 
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-sm p-[1vw] mb-[1vw] border border-gray-200">
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-6 gap-4">
             <div>
               <label className="block text-[.8vw] font-medium text-gray-700 mb-2">Search</label>
               <div className="relative">
@@ -550,9 +666,19 @@ const ProductionManagement = () => {
                 <option value="Remaining Allocation">Remaining Allocation</option>
               </select>
             </div>
+            <div>
+              <label className="block text-[.8vw] font-medium text-gray-700 mb-2">Filter by Production Status</label>
+              <select value={selectedProductionStatus} onChange={(e) => setSelectedProductionStatus(e.target.value)} className="w-full border border-gray-300 rounded-lg px-[.85vw] py-[0.6vw] focus:ring-2 focus:ring-blue-500 bg-white text-[.8vw]">
+                <option value="">All Statuses</option>
+                <option value="Production Pending">⏳ Production Pending</option>
+                <option value="In Production">🔄 In Production</option>
+                <option value="Production Completed">✅ Production Completed</option>
+                <option value="Awaiting Labels">⌛ Awaiting Labels</option>
+              </select>
+            </div>
             <div className="flex items-end">
               <button
-                onClick={() => { setSearchTerm(""); setSelectedProduct(""); setSelectedSize(""); setSelectedOrigin(""); }}
+                onClick={() => { setSearchTerm(""); setSelectedProduct(""); setSelectedSize(""); setSelectedOrigin(""); setSelectedProductionStatus(""); }}
                 className="w-full px-[.85vw] py-[0.6vw] bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium text-[.8vw] cursor-pointer"
               >
                 Clear Filters
@@ -634,13 +760,12 @@ const ProductionManagement = () => {
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">IML Name</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">IML Type</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">Label Type</th>
-                                            {/* ── NEW: 3 label columns ── */}
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">Labels Ordered</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">Labels Received</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">Available Labels</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-left text-[.8vw] font-semibold">Origin</th>
-                                            {/* ── NEW: Production Status ── */}
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center text-[.8vw] font-semibold">Production Status</th>
+                                            <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center text-[.8vw] font-semibold">Last Updated</th>
                                             <th className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center text-[.8vw] font-semibold">Action</th>
                                           </tr>
                                         </thead>
@@ -648,8 +773,79 @@ const ProductionManagement = () => {
                                           {items.map((item, idx) => {
                                             const isLidTub = item.imlType === "LID & TUB";
 
+                                            // ── Awaiting for Labels row (no view button) ──
+                                            if (item.isAwaitingLabels) {
+                                              if (isLidTub) {
+                                                return (
+                                                  <React.Fragment key={idx}>
+                                                    <tr className="bg-yellow-50 hover:bg-yellow-100 transition-colors">
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold" rowSpan={2}>{idx + 1}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-medium" rowSpan={2}>{item.orderNumber}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold" rowSpan={2}>{item.companyName}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold" rowSpan={2}>{item.imlName}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]" rowSpan={2}>
+                                                        <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[.75vw] font-semibold">{item.imlType}</span>
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                        <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 rounded text-[.75vw] font-semibold">LID</span>
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold text-gray-700">{item.lidLabelQty > 0 ? item.lidLabelQty : "—"}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]" rowSpan={2}>
+                                                        <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 rounded text-[.75vw] font-semibold">{item.origin}</span>
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center" rowSpan={2}>
+                                                        <span className="inline-block px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-[.75vw] font-semibold">⏳ Awaiting Labels</span>
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.75vw] text-gray-500 text-center" rowSpan={2}>—</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center" rowSpan={2}>
+                                                        <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[.75vw]">—</span>
+                                                      </td>
+                                                    </tr>
+                                                    <tr className="bg-yellow-50 hover:bg-yellow-100 transition-colors">
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                        <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[.75vw] font-semibold">TUB</span>
+                                                      </td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold text-gray-700">{item.tubLabelQty > 0 ? item.tubLabelQty : "—"}</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                      <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                    </tr>
+                                                  </React.Fragment>
+                                                );
+                                              }
+                                              // Single type awaiting
+                                              const isLidOnly = item.imlType === "LID";
+                                              const labelOrdered = isLidOnly ? item.lidLabelQty : item.tubLabelQty;
+                                              return (
+                                                <tr key={idx} className="bg-yellow-50 hover:bg-yellow-100 transition-colors">
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">{idx + 1}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-medium">{item.orderNumber}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold">{item.companyName}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold">{item.imlName}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                    <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[.75vw] font-semibold">{item.imlType}</span>
+                                                  </td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">{item.labelType}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold text-gray-700">{labelOrdered > 0 ? labelOrdered : "—"}</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] text-gray-400">—</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
+                                                    <span className="inline-block px-2 py-0.5 bg-green-100 text-green-700 rounded text-[.75vw] font-semibold">{item.origin}</span>
+                                                  </td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
+                                                    <span className="inline-block px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-[.75vw] font-semibold">⏳ Awaiting Labels</span>
+                                                  </td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.75vw] text-gray-500 text-center">—</td>
+                                                  <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
+                                                    <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-[.75vw]">—</span>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            }
+
                                             if (isLidTub) {
-                                              // ── LID & TUB: render 2 sub-rows inside one logical row ──
+                                              // ── LID & TUB: render 2 sub-rows with separate status and actions ──
                                               return (
                                                 <React.Fragment key={idx}>
                                                   {/* ── LID sub-row ── */}
@@ -694,9 +890,13 @@ const ProductionManagement = () => {
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]" rowSpan={2}>
                                                       <span className={`inline-block px-2 py-0.5 rounded text-[.75vw] font-semibold ${item.isFromRemaining ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>{item.origin}</span>
                                                     </td>
-                                                    {/* Production Status – LID row (its own cell, no rowspan) */}
+                                                    {/* Production Status – LID */}
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
-                                                      {renderProductionStatusBadge(item.orderId, item.productId)}
+                                                      {renderProductionStatusBadge(item.orderId, item.productId, "LID")}
+                                                    </td>
+                                                    {/* Last Updated – LID */}
+                                                    <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.75vw] text-gray-500 text-center">
+                                                      {formatDate(typeof item.lastUpdated === "object" ? item.lastUpdated?.lid : item.lastUpdated)}
                                                     </td>
                                                     {/* LID View button */}
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
@@ -727,9 +927,13 @@ const ProductionManagement = () => {
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw] font-semibold text-blue-700">
                                                       {item.tubRemaining}
                                                     </td>
-                                                    {/* Production Status – TUB row (separate cell) */}
+                                                    {/* Production Status – TUB */}
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
-                                                      {renderProductionStatusBadge(item.orderId, item.productId)}
+                                                      {renderProductionStatusBadge(item.orderId, item.productId, "TUB")}
+                                                    </td>
+                                                    {/* Last Updated – TUB */}
+                                                    <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.75vw] text-gray-500 text-center">
+                                                      {formatDate(typeof item.lastUpdated === "object" ? item.lastUpdated?.tub : item.lastUpdated)}
                                                     </td>
                                                     {/* TUB View button */}
                                                     <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
@@ -776,10 +980,11 @@ const ProductionManagement = () => {
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.8vw]">
                                                   <span className={`inline-block px-2 py-0.5 rounded text-[.75vw] font-semibold ${item.isFromRemaining ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>{item.origin}</span>
                                                 </td>
-                                                {/* Production Status */}
+                                                {/* Production Status — single component, no componentType needed */}
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
-                                                  {renderProductionStatusBadge(item.orderId, item.productId)}
+                                                  {renderProductionStatusBadge(item.orderId, item.productId, null)}
                                                 </td>
+                                                <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-[.75vw] text-gray-500 text-center">{formatDate(typeof item.lastUpdated === "object" ? null : item.lastUpdated)}</td>
                                                 <td className="border border-gray-300 px-[0.75vw] py-[.6vw] text-center">
                                                   <button
                                                     onClick={() => handleViewDetails(item, null)}

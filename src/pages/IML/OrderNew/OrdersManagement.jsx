@@ -645,6 +645,25 @@ const [confirmState, setConfirmState] = useState({
     }
   };
 
+  // Check whether PO details have actually been entered for a product
+  const hasPODetailsEntered = (orderId, productId, imlType) => {
+    try {
+      const raw = localStorage.getItem("iml_purchase_po_details");
+      if (!raw) return false;
+      const all = JSON.parse(raw);
+      const orderPO = all[orderId];
+      if (!orderPO?.products) return false;
+      const pd = orderPO.products[productId];
+      if (!pd) return false;
+      if (imlType === "LID & TUB") {
+        return !!(pd.lid?.poNumber && pd.lid?.supplier) || !!(pd.tub?.poNumber && pd.tub?.supplier);
+      }
+      return !!(pd.poNumber && pd.supplier);
+    } catch {
+      return false;
+    }
+  };
+
   const handleMoveProductToPurchase = (orderId, productId) => {
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
@@ -3401,11 +3420,21 @@ const [confirmState, setConfirmState] = useState({
                                                       );
                                                     })()} */}
                                                     <span
-                                                      className={`inline-block px-[.8vw] py-[.25vw] text-[.8vw] rounded font-semibold whitespace-pre ${product.orderStatus ===
-                                                        "Artwork Approved"
-                                                        ? "bg-green-100 text-green-700"
-                                                        : "bg-gray-100 text-gray-700"
-                                                        }`}
+                                                      className={`inline-block px-[.8vw] py-[.25vw] text-[.8vw] rounded font-semibold whitespace-pre ${
+                                                        product.orderStatus === "Artwork Approved"
+                                                          ? "bg-green-100 text-green-700"
+                                                          : product.orderStatus === "Production Completed"
+                                                          ? "bg-emerald-100 text-emerald-700"
+                                                          : product.orderStatus === "In Production"
+                                                          ? "bg-cyan-100 text-cyan-700"
+                                                          : product.orderStatus === "Production Pending"
+                                                          ? "bg-amber-100 text-amber-700"
+                                                          : product.orderStatus === "PO Raised & Awaiting for Labels"
+                                                          ? "bg-yellow-100 text-yellow-700"
+                                                          : product.orderStatus === "Dispatch Pending"
+                                                          ? "bg-purple-100 text-purple-700"
+                                                          : "bg-gray-100 text-gray-700"
+                                                      }`}
                                                     >
                                                       {product.orderStatus ||
                                                         "Artwork Pending"}
@@ -3552,19 +3581,38 @@ const [confirmState, setConfirmState] = useState({
                                                               )}
                                                           {product.designStatus ===
                                                             "approved" && (product.orderStatus !== "Order Pending")  && 
-                                                            !product.moveToPurchase &&
                                                             (order.paymentRecords && order.paymentRecords.length > 0) ? (
-                                                            <button
-                                                              onClick={() =>
-                                                                handleMoveProductToPurchase(
-                                                                  order.id,
-                                                                  product.id,
-                                                                )
-                                                              }
-                                                              className="px-[.2vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
-                                                            >
-                                                              Move to Purchase
-                                                            </button>
+                                                            <>
+                                                              {!product.moveToPurchase ? (
+                                                                <button
+                                                                  onClick={() =>
+                                                                    handleMoveProductToPurchase(
+                                                                      order.id,
+                                                                      product.id,
+                                                                    )
+                                                                  }
+                                                                  className="px-[.2vw] py-[0.4vw] cursor-pointer bg-green-600 text-white rounded hover:bg-green-700 text-[.75vw] font-medium transition-all w-full"
+                                                                >
+                                                                  Move to Purchase
+                                                                </button>
+                                                              ) : !hasPODetailsEntered(order.id, product.id, product.imlType) ? (
+                                                                <button
+                                                                  onClick={() =>
+                                                                    navigate("/iml/purchase/po-details", {
+                                                                      state: {
+                                                                        orderId: order.id,
+                                                                        fromOrdersManagement: true,
+                                                                        movedProductId: product.id,
+                                                                        mode: "single-product",
+                                                                      },
+                                                                    })
+                                                                  }
+                                                                  className="px-[.2vw] py-[0.4vw] cursor-pointer bg-amber-500 text-white rounded hover:bg-amber-600 text-[.75vw] font-medium transition-all w-full whitespace-pre"
+                                                                >
+                                                                  ⚠️ Enter PO Details
+                                                                </button>
+                                                              ) : null}
+                                                            </>
                                                           ) : (
                                                             <p className="w-full text-center">
                                                               {" "}

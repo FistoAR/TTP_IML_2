@@ -77,6 +77,11 @@ const PODetails = () => {
   // { sourceOptions: [{poNumber, supplier, productName, id}], pendingOrder: order }
 
   const [syncTubWithLid, setSyncTubWithLid] = useState({});
+  // Leave-confirmation modal state
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pendingLeaveAction, setPendingLeaveAction] = useState(null);
+  // "Same as order qty" checkbox state per product per part
+  const [sameAsOrderQty, setSameAsOrderQty] = useState({});
 
   // Load fresh order data from localStorage
   useEffect(() => {
@@ -615,10 +620,60 @@ const PODetails = () => {
     }
   };
 
-  const handleBack = () => {
-    navigate("/iml/purchase", {
-      state: { refreshOrders: true },
+  // Check if PO details have been entered for any product that is moved to purchase
+  const isPOEntered = () => {
+    if (!order) return false;
+    const isSingleProductFlow = mode === "single-product" && movedProductId;
+    const activeProducts = isSingleProductFlow
+      ? order.products.filter((p) => p.id === movedProductId)
+      : order.products.filter((p) => p.moveToPurchase);
+
+    return activeProducts.some((product) => {
+      const details = productPODetails[product.id];
+      if (!details) return false;
+      if (product.imlType === "LID & TUB") {
+        return !!(details.lid?.poNumber || details.lid?.supplier || details.tub?.poNumber || details.tub?.supplier);
+      }
+      return !!(details.poNumber || details.supplier);
     });
+  };
+
+  const hasSavedPO = () => {
+    if (!order) return false;
+    const isSingleProductFlow = mode === "single-product" && movedProductId;
+    const activeProducts = isSingleProductFlow
+      ? order.products.filter((p) => p.id === movedProductId)
+      : order.products.filter((p) => p.moveToPurchase);
+
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PO);
+      if (!raw) return false;
+      const all = JSON.parse(raw);
+      const orderPO = all[order.id];
+      if (!orderPO?.products) return false;
+      return activeProducts.some((p) => {
+        const pd = orderPO.products[p.id];
+        if (!pd) return false;
+        if (p.imlType === "LID & TUB") return !!(pd.lid?.poNumber && pd.lid?.supplier);
+        return !!(pd.poNumber && pd.supplier);
+      });
+    } catch { return false; }
+  };
+
+  const handleBack = () => {
+    // Only prompt if product was moved to purchase but PO details not yet saved
+    if (!hasSavedPO() && isPOEntered() === false && order) {
+      const isSingleProductFlow = mode === "single-product" && movedProductId;
+      const activeProducts = isSingleProductFlow
+        ? order.products.filter((p) => p.id === movedProductId)
+        : order.products.filter((p) => p.moveToPurchase);
+      if (activeProducts.length > 0) {
+        setPendingLeaveAction("back");
+        setShowLeaveModal(true);
+        return;
+      }
+    }
+    navigate("/iml/purchase", { state: { refreshOrders: true } });
   };
 
   // Loading state
@@ -833,62 +888,101 @@ const PODetails = () => {
                         <td className="border border-gray-300 px-[.85vw] py-[.75vw] text-[.85vw] font-semibold">
                           {product.imlType === "LID & TUB" ? (
                             <div className="flex flex-col gap-1">
-                              <div className="flex gap-[0.5vw] items-center">
-                                <p className="text-[.8vw] font-semibold text-blue-700 min-w-[2.5vw]">LID:</p>
-                                <input
-                                  type="number"
-                                  placeholder="Qty"
-                                  min="0"
-                                  value={details.lid?.poQty || ""}
-                                  onChange={(e) =>
-                                    updateProductField(
-                                      product.id,
-                                      "poQty",
-                                      e.target.value,
-                                      "lid"
-                                    )
-                                  }
-                                  className="border px-2 py-1 rounded text-sm w-[6vw]"
-                                />
+                              {/* LID PO Qty */}
+                              <div className="flex flex-col gap-[0.2vw]">
+                                <div className="flex gap-[0.5vw] items-center">
+                                  <p className="text-[.8vw] font-semibold text-blue-700 min-w-[2.5vw]">LID:</p>
+                                  <input
+                                    type="number"
+                                    placeholder="Qty"
+                                    min="0"
+                                    value={details.lid?.poQty || ""}
+                                    disabled={sameAsOrderQty[`${product.id}_lid`]}
+                                    onChange={(e) =>
+                                      updateProductField(product.id, "poQty", e.target.value, "lid")
+                                    }
+                                    className="border px-2 py-1 rounded text-sm w-[6vw] disabled:bg-gray-100"
+                                  />
+                                </div>
+                                <label className="flex items-center gap-[0.3vw] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={sameAsOrderQty[`${product.id}_lid`] || false}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setSameAsOrderQty((prev) => ({ ...prev, [`${product.id}_lid`]: checked }));
+                                      if (checked) updateProductField(product.id, "poQty", String(product.lidLabelQty || ""), "lid");
+                                    }}
+                                    className="accent-blue-600 cursor-pointer"
+                                  />
+                                  <span className="text-[.7vw] text-gray-500">Same as order qty</span>
+                                </label>
                               </div>
-                              <div className="flex gap-[0.5vw] items-center">
-                                <p className="text-[.8vw] font-semibold text-orange-600 min-w-[2.5vw]">TUB:</p>
-                                <input
-                                  type="number"
-                                  placeholder="Qty"
-                                  min="0"
-                                  value={details.tub?.poQty || ""}
-                                  onChange={(e) =>
-                                    updateProductField(
-                                      product.id,
-                                      "poQty",
-                                      e.target.value,
-                                      "tub"
-                                    )
-                                  }
-                                  className="border px-2 py-1 rounded text-sm w-[6vw]"
-                                />
+                              {/* TUB PO Qty */}
+                              <div className="flex flex-col gap-[0.2vw]">
+                                <div className="flex gap-[0.5vw] items-center">
+                                  <p className="text-[.8vw] font-semibold text-orange-600 min-w-[2.5vw]">TUB:</p>
+                                  <input
+                                    type="number"
+                                    placeholder="Qty"
+                                    min="0"
+                                    value={details.tub?.poQty || ""}
+                                    disabled={sameAsOrderQty[`${product.id}_tub`]}
+                                    onChange={(e) =>
+                                      updateProductField(product.id, "poQty", e.target.value, "tub")
+                                    }
+                                    className="border px-2 py-1 rounded text-sm w-[6vw] disabled:bg-gray-100"
+                                  />
+                                </div>
+                                <label className="flex items-center gap-[0.3vw] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={sameAsOrderQty[`${product.id}_tub`] || false}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setSameAsOrderQty((prev) => ({ ...prev, [`${product.id}_tub`]: checked }));
+                                      if (checked) updateProductField(product.id, "poQty", String(product.tubLabelQty || ""), "tub");
+                                    }}
+                                    className="accent-orange-500 cursor-pointer"
+                                  />
+                                  <span className="text-[.7vw] text-gray-500">Same as order qty</span>
+                                </label>
                               </div>
                             </div>
                           ) : (
-                            <div className="flex gap-[0.5vw] items-center">
-                              <p className="text-[.8vw] font-semibold text-gray-600 min-w-[2.5vw]">
-                                {product.imlType.includes("LID") ? "LID:" : "TUB:"}
-                              </p>
-                              <input
-                                type="number"
-                                placeholder="Qty"
-                                min="0"
-                                value={details.poQty || ""}
-                                onChange={(e) =>
-                                  updateProductField(
-                                    product.id,
-                                    "poQty",
-                                    e.target.value
-                                  )
-                                }
-                                className="border px-2 py-1 rounded text-sm w-[6vw]"
-                              />
+                            <div className="flex flex-col gap-[0.2vw]">
+                              <div className="flex gap-[0.5vw] items-center">
+                                <p className="text-[.8vw] font-semibold text-gray-600 min-w-[2.5vw]">
+                                  {product.imlType.includes("LID") ? "LID:" : "TUB:"}
+                                </p>
+                                <input
+                                  type="number"
+                                  placeholder="Qty"
+                                  min="0"
+                                  value={details.poQty || ""}
+                                  disabled={sameAsOrderQty[`${product.id}_single`]}
+                                  onChange={(e) =>
+                                    updateProductField(product.id, "poQty", e.target.value)
+                                  }
+                                  className="border px-2 py-1 rounded text-sm w-[6vw] disabled:bg-gray-100"
+                                />
+                              </div>
+                              <label className="flex items-center gap-[0.3vw] cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={sameAsOrderQty[`${product.id}_single`] || false}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setSameAsOrderQty((prev) => ({ ...prev, [`${product.id}_single`]: checked }));
+                                    if (checked) {
+                                      const qty = product.imlType.includes("LID") ? product.lidLabelQty : product.tubLabelQty;
+                                      updateProductField(product.id, "poQty", String(qty || ""));
+                                    }
+                                  }}
+                                  className="accent-blue-600 cursor-pointer"
+                                />
+                                <span className="text-[.7vw] text-gray-500">Same as order qty</span>
+                              </label>
                             </div>
                           )}
                         </td>
@@ -1736,6 +1830,42 @@ const PODetails = () => {
             </div>
           );
         })()}
+      {/* Leave Confirmation Modal */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 bg-[#00000096] flex items-center justify-center z-[9999] p-[2vw]">
+          <div className="bg-white rounded-[0.8vw] shadow-2xl w-full max-w-[40vw] overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-[1.5vw] py-[1vw] rounded-t-[0.8vw]">
+              <h2 className="text-[1.1vw] font-bold flex items-center gap-2">⚠️ PO Details Not Entered</h2>
+            </div>
+            <div className="px-[1.5vw] py-[1.2vw]">
+              <p className="text-[.95vw] text-gray-800 font-semibold mb-[0.5vw]">
+                PO details have not been entered for this product.
+              </p>
+              <p className="text-[.85vw] text-gray-600">
+                The product has been moved to Purchase Management, but the Purchase Order information (PO Number, Supplier, etc.) has not been saved yet. Do you still want to go back without entering PO details?
+              </p>
+            </div>
+            <div className="px-[1.5vw] py-[1vw] bg-gray-50 border-t border-gray-200 flex gap-[1vw] justify-end">
+              <button
+                onClick={() => setShowLeaveModal(false)}
+                className="px-[1.5vw] py-[.6vw] bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-[0.5vw] font-semibold text-[.9vw] cursor-pointer transition-all"
+              >
+                Stay & Enter PO Details
+              </button>
+              <button
+                onClick={() => {
+                  setShowLeaveModal(false);
+                  navigate("/iml/purchase", { state: { refreshOrders: true } });
+                }}
+                className="px-[1.5vw] py-[.6vw] bg-amber-500 hover:bg-amber-600 text-white rounded-[0.5vw] font-semibold text-[.9vw] cursor-pointer transition-all"
+              >
+                Go Back Without Saving
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PO Selection Modal - shown when multiple distinct PO+Supplier combos exist */}
       {poSelectionModal && (
         <div className="fixed inset-0 bg-[#00000096] flex items-center justify-center z-50 p-[2vw]">

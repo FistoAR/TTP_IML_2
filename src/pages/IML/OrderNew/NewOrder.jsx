@@ -1767,9 +1767,18 @@ useEffect(() => {
             const hasMatchingProducts = matchingProducts.length > 0;
             
             // Check if design is approved and designSharedMail is false (showing approve date)
+            // Also ensure the source matching product actually has artwork uploaded
+            const sourceProduct = matchingProducts.length > 0 ? matchingProducts[0] : null;
+            const sourceHasArtwork = sourceProduct && (
+              !!sourceProduct.lidDesignFile ||
+              !!sourceProduct.tubDesignFile ||
+              !!sourceProduct.lidSelectedOldDesign ||
+              !!sourceProduct.tubSelectedOldDesign
+            );
             const showLinkedDesignOption = hasMatchingProducts && 
               product.designStatus === "approved" && 
-              !product.designSharedMail;
+              !product.designSharedMail &&
+              sourceHasArtwork;
             
             return (
             <div key={product.id} className="mt-[1vw]">

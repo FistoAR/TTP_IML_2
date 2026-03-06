@@ -25,29 +25,24 @@ const ProductionDetails = () => {
 
   const { entry } = location.state || {};
 
-  // ── activeComponentType: "LID", "TUB", or null (full LID & TUB / single) ──
-  // This is set by ProductionManagement when clicking LID or TUB view button
   const activeComponentType = entry?.activeComponentType || null;
 
-  // Derive what to show
   const isLidAndTub = entry?.imlType === "LID & TUB";
-  // showLid: show LID entry form
   const showLid = isLidAndTub
-    ? activeComponentType === "LID"   // LID & TUB → only if LID button was clicked
-    : entry?.imlType === "LID";        // pure LID
-  // showTub: show TUB entry form
+    ? activeComponentType === "LID"
+    : entry?.imlType === "LID";
   const showTub = isLidAndTub
-    ? activeComponentType === "TUB"   // LID & TUB → only if TUB button was clicked
-    : entry?.imlType === "TUB";        // pure TUB
-  // single: non-LID-TUB types that aren't strictly LID or TUB
+    ? activeComponentType === "TUB"
+    : entry?.imlType === "TUB";
   const showSingle = !isLidAndTub && entry?.imlType !== "LID" && entry?.imlType !== "TUB";
 
-  // Customer Details Form
   const [customerForm, setCustomerForm] = useState({
     customerName: "",
     product: "",
     size: "",
     containerColor: "",
+    lidColor: "",
+    tubColor: "",
     imlName: "",
     lidMachineNumber: "",
     tubMachineNumber: "",
@@ -59,7 +54,6 @@ const ProductionDetails = () => {
     tubRemaining: 0,
   });
 
-  // Add Entry Form - For LID (or single)
   const [lidEntryForm, setLidEntryForm] = useState({
     date: new Date().toISOString().split("T")[0],
     shift: "Day",
@@ -71,7 +65,6 @@ const ProductionDetails = () => {
     componentType: "LID",
   });
 
-  // Add Entry Form - For TUB
   const [tubEntryForm, setTubEntryForm] = useState({
     date: new Date().toISOString().split("T")[0],
     shift: "Day",
@@ -105,26 +98,40 @@ const ProductionDetails = () => {
   const [tubProductionQty, setTubProductionQty] = useState(0);
   const [totalProductionQty, setTotalProductionQty] = useState(0);
 
+  const [orderQtyDisplay, setOrderQtyDisplay] = useState({ lidOrderQty: 0, tubOrderQty: 0, lidProdQty: 0, tubProdQty: 0, singleOrderQty: 0, singleProdQty: 0 });
+
   const [showPersonManager, setShowPersonManager] = useState(false);
   const [newPerson, setNewPerson] = useState("");
   const [personType, setPersonType] = useState("received");
 
   const [totalLabelsReceived, setTotalLabelsReceived] = useState({ lid: 0, tub: 0, single: 0 });
 
-  // ── NEW: Production complete checkbox + confirmation modal ──
-  const [markProductionComplete, setMarkProductionComplete] = useState(false);
-  const [showCompleteConfirmModal, setShowCompleteConfirmModal] = useState(false);
+  const [isLidProductionCompleted, setIsLidProductionCompleted] = useState(false);
+  const [isTubProductionCompleted, setIsTubProductionCompleted] = useState(false);
   const [isProductionCompleted, setIsProductionCompleted] = useState(false);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    if (entry) {
-      const prodKey = `${entry.orderId}_${entry.productId}`;
-      const saved = JSON.parse(localStorage.getItem("iml_total_labels_received") || "{}");
-      const savedData = saved[prodKey];
-      if (savedData) setTotalLabelsReceived(savedData);
+  const [markLidComplete, setMarkLidComplete] = useState(false);
+  const [markTubComplete, setMarkTubComplete] = useState(false);
+  const [markSingleComplete, setMarkSingleComplete] = useState(false);
+  const [showCompleteConfirmModal, setShowCompleteConfirmModal] = useState(false);
+  const [pendingCompleteTarget, setPendingCompleteTarget] = useState(null);
+
+  const isCurrentComponentCompleted = () => {
+    if (isLidAndTub) {
+      if (activeComponentType === "LID") return isLidProductionCompleted;
+      if (activeComponentType === "TUB") return isTubProductionCompleted;
+      return isLidProductionCompleted && isTubProductionCompleted;
     }
-  }, [entry]);
+    return isProductionCompleted;
+  };
+
+  const canAddEntry = (componentType) => {
+    if (isLidAndTub) {
+      if (componentType === "LID") return !isLidProductionCompleted;
+      if (componentType === "TUB") return !isTubProductionCompleted;
+    }
+    return !isProductionCompleted;
+  };
 
   const getTotalLabels = (orderId, productId, entryData) => {
     if (entryData && entryData.calculatedTotal !== undefined) {
@@ -182,6 +189,62 @@ const ProductionDetails = () => {
     return { totalQuantity, lidQuantity, tubQuantity, isFromRemaining: isFromRemainingFlag };
   };
 
+  const loadOrderQtyDisplay = (orderId, productId) => {
+    try {
+      const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
+      const order = orders.find((o) => o.id === orderId);
+      const product = order?.products?.find((p) => p.id === productId);
+      if (!product) return;
+
+      setOrderQtyDisplay({
+        lidOrderQty: toNumber(product.lidLabelQty || 0),
+        tubOrderQty: toNumber(product.tubLabelQty || 0),
+        lidProdQty: toNumber(product.lidProductionQty || 0),
+        tubProdQty: toNumber(product.tubProductionQty || 0),
+        singleOrderQty: toNumber(product.lidLabelQty || product.tubLabelQty || 0),
+        singleProdQty: toNumber(product.lidProductionQty || product.tubProductionQty || 0),
+      });
+    } catch (e) {
+      console.error("Error loading order qty display", e);
+    }
+  };
+
+  // ── UPDATED: recomputeRemaining now uses the passed labels as the base ──
+  // When entries is empty, remaining = base labels (not 0)
+  const recomputeRemaining = useCallback((entries, savedTotalLabels) => {
+    const lidUsed = entries.reduce((sum, e) => {
+      if (e.componentType === "LID" || e.componentType === "SINGLE") return sum + toNumber(e.acceptedComponents);
+      return sum;
+    }, 0);
+    const tubUsed = entries.reduce((sum, e) => {
+      if (e.componentType === "TUB") return sum + toNumber(e.acceptedComponents);
+      return sum;
+    }, 0);
+
+    if (isLidAndTub) {
+      const baseLid = toNumber(savedTotalLabels.lid);
+      const baseTub = toNumber(savedTotalLabels.tub);
+      return {
+        lid: Math.max(baseLid - lidUsed, 0),
+        tub: Math.max(baseTub - tubUsed, 0),
+      };
+    } else {
+      const baseSingle = toNumber(savedTotalLabels.single);
+      return { lid: Math.max(baseSingle - lidUsed, 0), tub: 0 };
+    }
+  }, [isLidAndTub]);
+
+  // ── UPDATED: Helper to apply remaining to all state at once ──
+  const applyRemaining = useCallback((remaining) => {
+    setRemainingLidLabels(remaining.lid);
+    setRemainingTubLabels(remaining.tub);
+    setCustomerForm((prev) => ({
+      ...prev,
+      lidRemaining: remaining.lid,
+      tubRemaining: remaining.tub,
+    }));
+  }, []);
+
   // Load data from localStorage and prefill
   useEffect(() => {
     if (entry) {
@@ -211,10 +274,29 @@ const ProductionDetails = () => {
       setTubQuantity(labelTotals.tubQuantity);
 
       const prodKey = `${entry.orderId}_${entry.productId}`;
-      const savedLabels = JSON.parse(localStorage.getItem("iml_total_labels_received") || "{}");
-      const savedTotalLabels = savedLabels[prodKey] || { lid: 0, tub: 0, single: 0 };
-      setTotalLabelsReceived(savedTotalLabels);
+      const savedOverrides = JSON.parse(localStorage.getItem("iml_total_labels_received") || "{}");
+      const savedOverride = savedOverrides[prodKey] || {};
 
+      const fallbackLid = (entry.calculatedLidTotal > 0 ? entry.calculatedLidTotal : labelTotals.lidQuantity) || 0;
+      const fallbackTub = (entry.calculatedTubTotal > 0 ? entry.calculatedTubTotal : labelTotals.tubQuantity) || 0;
+      const fallbackSingle = (() => {
+        if (entry.calculatedTotal > 0) return entry.calculatedTotal;
+        if (entry.imlType === "TUB") return labelTotals.tubQuantity || 0;
+        return labelTotals.lidQuantity || labelTotals.totalQuantity || 0;
+      })();
+      const effectiveLid = (savedOverride.lid > 0 ? savedOverride.lid : fallbackLid);
+      const effectiveTub = (savedOverride.tub > 0 ? savedOverride.tub : fallbackTub);
+      const effectiveSingle = (savedOverride.single > 0 ? savedOverride.single : fallbackSingle);
+
+      const resolvedTotalLabels = {
+        lid: effectiveLid,
+        tub: effectiveTub,
+        single: effectiveSingle,
+      };
+      setTotalLabelsReceived(resolvedTotalLabels);
+
+      // ── UPDATED: Compute remaining using resolved labels ──
+      // This ensures that when no entries exist, remaining = total labels received
       const lidUsed = entriesHistory.reduce((sum, e) => {
         if (e.componentType === "LID" || e.componentType === "SINGLE") return sum + toNumber(e.acceptedComponents);
         return sum;
@@ -224,43 +306,64 @@ const ProductionDetails = () => {
         return sum;
       }, 0);
 
+      let computedLidRemaining, computedTubRemaining;
+
       if (isLidAndTub) {
-        const effectiveLid = savedTotalLabels.lid > 0 ? savedTotalLabels.lid : labelTotals.lidQuantity;
-        const effectiveTub = savedTotalLabels.tub > 0 ? savedTotalLabels.tub : labelTotals.tubQuantity;
-        setRemainingLidLabels(Math.max(effectiveLid - lidUsed, 0));
-        setRemainingTubLabels(Math.max(effectiveTub - tubUsed, 0));
+        computedLidRemaining = Math.max(toNumber(effectiveLid) - lidUsed, 0);
+        computedTubRemaining = Math.max(toNumber(effectiveTub) - tubUsed, 0);
+        setRemainingLidLabels(computedLidRemaining);
+        setRemainingTubLabels(computedTubRemaining);
         setLidProductionQty(labelTotals.lidQuantity);
         setTubProductionQty(labelTotals.tubQuantity);
       } else {
-        const effectiveSingle = savedTotalLabels.single > 0 ? savedTotalLabels.single : labelTotals.totalQuantity;
-        setRemainingLidLabels(Math.max(effectiveSingle - lidUsed, 0));
+        computedLidRemaining = Math.max(toNumber(effectiveSingle) - lidUsed, 0);
+        computedTubRemaining = Math.max(toNumber(effectiveSingle) - lidUsed, 0);
+        setRemainingLidLabels(computedLidRemaining);
+        setRemainingTubLabels(computedTubRemaining);
         setTotalProductionQty(labelTotals.totalQuantity);
       }
+
+      const parsedLidColor = entry.lidColor || (() => {
+        const match = (entry.containerColor || "").match(/Lid:\s*([^,]+)/i);
+        return match ? match[1].trim() : "";
+      })();
+      const parsedTubColor = entry.tubColor || (() => {
+        const match = (entry.containerColor || "").match(/Tub:\s*([^,]+)/i);
+        return match ? match[1].trim() : "";
+      })();
 
       setCustomerForm({
         customerName: entry.company || "",
         size: entry.size || "",
         product: entry.product || "",
         containerColor: entry.containerColor || "",
+        lidColor: parsedLidColor,
+        tubColor: parsedTubColor,
         imlName: entry.imlName || "",
         lidMachineNumber: entry.lidMachineNumber || entry.machineNumber || "",
         tubMachineNumber: entry.tubMachineNumber || entry.machineNumber || "",
         lidReceivedBy: entry.lidReceivedBy || entry.receivedBy || "",
         tubReceivedBy: entry.tubReceivedBy || entry.receivedBy || "",
-        lidTotalLabels: isLidAndTub ? labelTotals.lidQuantity : labelTotals.lidQuantity,
-        tubTotalLabels: isLidAndTub ? labelTotals.tubQuantity : 0,
-        lidRemaining: isLidAndTub
-          ? Math.max(labelTotals.lidQuantity - lidUsed, 0)
-          : Math.max(labelTotals.lidQuantity - lidUsed, 0),
-        tubRemaining: isLidAndTub ? Math.max(labelTotals.tubQuantity - tubUsed, 0) : 0,
+        lidTotalLabels: isLidAndTub ? fallbackLid : fallbackSingle,
+        tubTotalLabels: isLidAndTub ? fallbackTub : 0,
+        lidRemaining: computedLidRemaining,
+        tubRemaining: computedTubRemaining,
       });
 
-      // Check if production is already completed
+      loadOrderQtyDisplay(entry.orderId, entry.productId);
+
       const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
       const order = orders.find((o) => o.id === entry.orderId);
       const product = order?.products?.find((p) => p.id === entry.productId);
-      if (product?.orderStatus === "Production Completed" || product?.orderStatus === "Dispatch Pending") {
-        setIsProductionCompleted(true);
+
+      if (isLidAndTub) {
+        const lidStatus = product?.lidOrderStatus || "";
+        const tubStatus = product?.tubOrderStatus || "";
+        setIsLidProductionCompleted(lidStatus === "Production Completed" || lidStatus === "Dispatch Pending");
+        setIsTubProductionCompleted(tubStatus === "Production Completed" || tubStatus === "Dispatch Pending");
+      } else {
+        const status = product?.orderStatus || "";
+        setIsProductionCompleted(status === "Production Completed" || status === "Dispatch Pending");
       }
     }
   }, [entry]);
@@ -327,23 +430,42 @@ const ProductionDetails = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const getProductStatus = () => {
+  const getComponentStatus = (componentType) => {
     const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
-    const order = orders.find((o) => o.id === entry.orderId);
-    const product = order?.products?.find((p) => p.id === entry.productId);
-    return product?.orderStatus;
+    const order = orders.find((o) => o.id === entry?.orderId);
+    const product = order?.products?.find((p) => p.id === entry?.productId);
+    if (!product) return null;
+    if (isLidAndTub) {
+      const field = componentType === "LID" ? "lidOrderStatus" : "tubOrderStatus";
+      return product[field] || null;
+    }
+    return product.orderStatus || null;
   };
 
-  const isInProduction = getProductStatus() === "In Production";
+  const isLidInProduction = isLidAndTub ? (getComponentStatus("LID") === "In Production") : false;
+  const isTubInProduction = isLidAndTub ? (getComponentStatus("TUB") === "In Production") : false;
+  const isSingleInProduction = !isLidAndTub ? (getComponentStatus(null) === "In Production") : false;
 
-  // ── GUARD: block entries if not in production ──
-  const checkCanAddEntry = () => {
-    if (!isInProduction && !isProductionCompleted) {
-      alert('⚠️ Please click "Mark as In Production" first before adding entries.');
-      return false;
+  const checkCanAddEntry = (componentType) => {
+    if (isLidAndTub) {
+      const inProd = componentType === "LID" ? isLidInProduction : isTubInProduction;
+      const completed = componentType === "LID" ? isLidProductionCompleted : isTubProductionCompleted;
+      if (completed) {
+        alert(`⛔ ${componentType} Production is already marked as complete. No more entries can be added.`);
+        return false;
+      }
+      if (!inProd) {
+        alert(`⚠️ Please mark ${componentType} as "In Production" first before adding entries.`);
+        return false;
+      }
+      return true;
     }
     if (isProductionCompleted) {
       alert("⛔ Production is already marked as complete. No more entries can be added.");
+      return false;
+    }
+    if (!isSingleInProduction) {
+      alert('⚠️ Please click "Mark as In Production" first before adding entries.');
       return false;
     }
     return true;
@@ -358,7 +480,7 @@ const ProductionDetails = () => {
   };
 
   const addLidProductionEntry = () => {
-    if (!checkCanAddEntry()) return;
+    if (!checkCanAddEntry("LID")) return;
 
     if (!lidEntryForm.acceptedComponents || !lidEntryForm.rejectedComponents || !lidEntryForm.packingIncharge || !lidEntryForm.approvedBy || !customerForm.lidMachineNumber || !customerForm.lidReceivedBy) {
       alert("Please fill all required fields for LID (including Machine Number and Received By)");
@@ -383,18 +505,14 @@ const ProductionDetails = () => {
     setProductionEntries(updatedEntries);
     saveEntries(updatedEntries);
 
-    const lidUsed = updatedEntries.reduce((sum, e) => (e.componentType === "LID" ? sum + toNumber(e.acceptedComponents) : sum), 0);
-    const effectiveLidTotal = totalLabelsReceived.lid > 0 ? totalLabelsReceived.lid : lidQuantity;
-    const remainingLid = Math.max(effectiveLidTotal - lidUsed, 0);
-    setRemainingLidLabels(remainingLid);
-    checkAndUpdateOrderStatus(remainingLid, remainingTubLabels);
-    setCustomerForm((prev) => ({ ...prev, lidRemaining: remainingLid }));
+    const remaining = recomputeRemaining(updatedEntries, totalLabelsReceived);
+    applyRemaining(remaining);
 
     setLidEntryForm({ date: new Date().toISOString().split("T")[0], shift: "Day", packingIncharge: "", acceptedComponents: "", rejectedComponents: "", labelWastage: "0", approvedBy: "", componentType: "LID" });
   };
 
   const addTubProductionEntry = () => {
-    if (!checkCanAddEntry()) return;
+    if (!checkCanAddEntry("TUB")) return;
 
     if (!tubEntryForm.acceptedComponents || !tubEntryForm.rejectedComponents || !tubEntryForm.packingIncharge || !tubEntryForm.approvedBy || !customerForm.tubMachineNumber || !customerForm.tubReceivedBy) {
       alert("Please fill all required fields for TUB (including Machine Number and Received By)");
@@ -419,18 +537,14 @@ const ProductionDetails = () => {
     setProductionEntries(updatedEntries);
     saveEntries(updatedEntries);
 
-    const tubUsed = updatedEntries.reduce((sum, e) => (e.componentType === "TUB" ? sum + toNumber(e.acceptedComponents) : sum), 0);
-    const effectiveTubTotal = totalLabelsReceived.tub > 0 ? totalLabelsReceived.tub : tubQuantity;
-    const remainingTub = Math.max(effectiveTubTotal - tubUsed, 0);
-    setRemainingTubLabels(remainingTub);
-    checkAndUpdateOrderStatus(remainingLidLabels, remainingTub);
-    setCustomerForm((prev) => ({ ...prev, tubRemaining: remainingTub }));
+    const remaining = recomputeRemaining(updatedEntries, totalLabelsReceived);
+    applyRemaining(remaining);
 
     setTubEntryForm({ date: new Date().toISOString().split("T")[0], shift: "Day", packingIncharge: "", acceptedComponents: "", rejectedComponents: "", labelWastage: "0", approvedBy: "", componentType: "TUB" });
   };
 
   const addProductionEntry = () => {
-    if (!checkCanAddEntry()) return;
+    if (!checkCanAddEntry(null)) return;
 
     if (!lidEntryForm.acceptedComponents || !lidEntryForm.rejectedComponents || !lidEntryForm.packingIncharge || !lidEntryForm.approvedBy || !customerForm.lidMachineNumber || !customerForm.lidReceivedBy) {
       alert("Please fill all required fields (including Machine Number and Received By)");
@@ -455,65 +569,117 @@ const ProductionDetails = () => {
     setProductionEntries(updatedEntries);
     saveEntries(updatedEntries);
 
-    const usedLabels = updatedEntries.reduce((sum, e) => sum + toNumber(e.acceptedComponents), 0);
-    const effectiveSingleTotal = totalLabelsReceived.single > 0 ? totalLabelsReceived.single : totalQuantity;
-    const remaining = Math.max(effectiveSingleTotal - usedLabels, 0);
-    setRemainingLidLabels(remaining);
-    checkAndUpdateOrderStatus(remaining, 0);
-    setCustomerForm((prev) => ({ ...prev, lidRemaining: remaining }));
+    const remaining = recomputeRemaining(updatedEntries, totalLabelsReceived);
+    applyRemaining(remaining);
 
     setLidEntryForm({ date: new Date().toISOString().split("T")[0], shift: "Day", packingIncharge: "", acceptedComponents: "", rejectedComponents: "", labelWastage: "0", approvedBy: "", componentType: "SINGLE" });
   };
 
   const handleBack = () => navigate("/iml/production", { state: { refreshData: true } });
 
-  // ── Handle Save: if markProductionComplete is checked, show confirmation modal first ──
+  const computeCombinedOrderStatus = (lidStatus, tubStatus, product) => {
+    const lidDone = lidStatus === "Production Completed";
+    const tubDone = tubStatus === "Production Completed";
+    if (lidDone && tubDone) return "Production Completed";
+
+    const lidInProd = lidStatus === "In Production";
+    const tubInProd = tubStatus === "In Production";
+    if (lidInProd || tubInProd || lidDone || tubDone) return "In Production";
+
+    const labelData = JSON.parse(localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}");
+    const key = `${entry?.orderId}_${product?.id || entry?.productId}`;
+    const hasLabels = labelData[key] != null;
+
+    if (!hasLabels) return "PO Raised & Awaiting for Labels";
+    return "Production Pending";
+  };
+
+  const handleMarkInProduction = (componentType) => {
+    const orderData = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
+    const updatedOrders = orderData.map((order) => {
+      if (order.id !== entry.orderId) return order;
+      return {
+        ...order,
+        products: order.products.map((product) => {
+          if (product.id !== entry.productId) return product;
+          if (isLidAndTub) {
+            const field = componentType === "LID" ? "lidOrderStatus" : "tubOrderStatus";
+            const newProduct = { ...product, [field]: "In Production" };
+            const newLidStatus = componentType === "LID" ? "In Production" : (product.lidOrderStatus || "");
+            const newTubStatus = componentType === "TUB" ? "In Production" : (product.tubOrderStatus || "");
+            newProduct.orderStatus = computeCombinedOrderStatus(newLidStatus, newTubStatus, product);
+            return newProduct;
+          }
+          return { ...product, orderStatus: "In Production" };
+        }),
+      };
+    });
+    localStorage.setItem(STORAGE_KEY_IML, JSON.stringify(updatedOrders));
+    if (window.opener && window.opener.location.href.includes("orders")) window.opener.location.reload();
+    else window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
+    alert(`✅ ${componentType || "Product"} marked as In Production!`);
+    window.location.reload();
+  };
+
   const handleSubmit = () => {
     if (productionEntries.length === 0) {
       alert("Please add at least one production entry before submitting");
       return;
     }
 
-    if (markProductionComplete) {
-      // Show custom confirmation modal
+    const wantLidComplete = isLidAndTub ? markLidComplete : false;
+    const wantTubComplete = isLidAndTub ? markTubComplete : false;
+    const wantSingleComplete = !isLidAndTub && markSingleComplete;
+
+    if ((wantLidComplete && activeComponentType === "LID") ||
+      (wantTubComplete && activeComponentType === "TUB") ||
+      wantSingleComplete) {
+      const target = isLidAndTub ? activeComponentType : "SINGLE";
+      setPendingCompleteTarget(target);
       setShowCompleteConfirmModal(true);
       return;
     }
 
-    // Normal save
-    performSave(false);
+    performSave(null);
   };
 
-  const performSave = (complete) => {
+  const performSave = (completeTarget) => {
     const submittedEntries = productionEntries.map((e) => ({ ...e, submitted: true }));
     setProductionEntries(submittedEntries);
     saveEntries(submittedEntries);
 
-    if (complete) {
-      // Mark order status as "Production Completed"
+    if (completeTarget) {
       const orderData = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
-      const updatedOrders = orderData.map((order) =>
-        order.id === entry.orderId
-          ? {
-              ...order,
-              products: order.products.map((product) =>
-                product.id === entry.productId
-                  ? { ...product, orderStatus: "Production Completed" }
-                  : product,
-              ),
+      const updatedOrders = orderData.map((order) => {
+        if (order.id !== entry.orderId) return order;
+        return {
+          ...order,
+          products: order.products.map((product) => {
+            if (product.id !== entry.productId) return product;
+            if (isLidAndTub) {
+              const field = completeTarget === "LID" ? "lidOrderStatus" : "tubOrderStatus";
+              const newProduct = { ...product, [field]: "Production Completed" };
+              const newLidStatus = completeTarget === "LID" ? "Production Completed" : (product.lidOrderStatus || "");
+              const newTubStatus = completeTarget === "TUB" ? "Production Completed" : (product.tubOrderStatus || "");
+              newProduct.orderStatus = computeCombinedOrderStatus(newLidStatus, newTubStatus, newProduct);
+              return newProduct;
             }
-          : order,
-      );
+            return { ...product, orderStatus: "Production Completed" };
+          }),
+        };
+      });
       localStorage.setItem(STORAGE_KEY_IML, JSON.stringify(updatedOrders));
 
-      if (window.opener && window.opener.location.href.includes("orders")) {
-        window.opener.location.reload();
-      } else {
-        window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
-      }
+      if (window.opener && window.opener.location.href.includes("orders")) window.opener.location.reload();
+      else window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
 
-      setIsProductionCompleted(true);
-      alert("✅ Production marked as complete!");
+      if (isLidAndTub) {
+        if (completeTarget === "LID") setIsLidProductionCompleted(true);
+        else setIsTubProductionCompleted(true);
+      } else {
+        setIsProductionCompleted(true);
+      }
+      alert(`✅ ${completeTarget === "SINGLE" ? "Production" : completeTarget + " Production"} marked as complete!`);
     } else {
       alert("✅ Production details submitted successfully!");
     }
@@ -528,83 +694,35 @@ const ProductionDetails = () => {
     setProductionEntries(updatedEntries);
     saveEntries(updatedEntries);
 
-    if (isLidAndTub) {
-      const lidUsed = updatedEntries.reduce((sum, e) => (e.componentType === "LID" ? sum + toNumber(e.acceptedComponents) : sum), 0);
-      const tubUsed = updatedEntries.reduce((sum, e) => (e.componentType === "TUB" ? sum + toNumber(e.acceptedComponents) : sum), 0);
-      // Use same effective totals as add functions — respect totalLabelsReceived override
-      const effectiveLidTotal = totalLabelsReceived.lid > 0 ? totalLabelsReceived.lid : lidQuantity;
-      const effectiveTubTotal = totalLabelsReceived.tub > 0 ? totalLabelsReceived.tub : tubQuantity;
-      const remainingLid = Math.max(effectiveLidTotal - lidUsed, 0);
-      const remainingTub = Math.max(effectiveTubTotal - tubUsed, 0);
-      setRemainingLidLabels(remainingLid);
-      setRemainingTubLabels(remainingTub);
-      setCustomerForm((prev) => ({ ...prev, lidRemaining: remainingLid, tubRemaining: remainingTub }));
-    } else {
-      const usedLabels = updatedEntries.reduce((sum, e) => sum + toNumber(e.acceptedComponents), 0);
-      // Use same effective total as add functions — respect totalLabelsReceived override
-      const effectiveSingleTotal = totalLabelsReceived.single > 0 ? totalLabelsReceived.single : totalQuantity;
-      const remaining = Math.max(effectiveSingleTotal - usedLabels, 0);
-      setRemainingLidLabels(remaining);
-      setCustomerForm((prev) => ({ ...prev, lidRemaining: remaining }));
-    }
+    const remaining = recomputeRemaining(updatedEntries, totalLabelsReceived);
+    applyRemaining(remaining);
   };
 
+  // ── UPDATED: handleTotalLabelsChange - recomputes remaining immediately ──
   const handleTotalLabelsChange = useCallback((type) => (e) => {
     const val = parseInt(e.target.value) || 0;
     setTotalLabelsReceived((prev) => {
       const newState = { ...prev, [type]: val };
+
+      // Persist user override
       const prodKey = `${entry?.orderId}_${entry?.productId}`;
       const saved = JSON.parse(localStorage.getItem("iml_total_labels_received") || "{}");
       saved[prodKey] = newState;
       localStorage.setItem("iml_total_labels_received", JSON.stringify(saved));
+
+      // Recompute remaining with updated totalLabelsReceived
+      const remaining = recomputeRemaining(productionEntries, newState);
+      setRemainingLidLabels(remaining.lid);
+      setRemainingTubLabels(remaining.tub);
+      setCustomerForm((prevForm) => ({
+        ...prevForm,
+        lidRemaining: remaining.lid,
+        tubRemaining: remaining.tub,
+      }));
+
       return newState;
     });
-
-    if (isLidAndTub) {
-      if (type === "lid") {
-        setRemainingLidLabels(() => {
-          const effectiveVal = val === 0 ? lidProductionQty : val;
-          const lidUsed = productionEntries.reduce((sum, e) => (e.componentType === "LID" || e.componentType === "SINGLE") ? sum + toNumber(e.acceptedComponents) : sum, 0);
-          return Math.max(effectiveVal - lidUsed, 0);
-        });
-      } else if (type === "tub") {
-        setRemainingTubLabels(() => {
-          const effectiveVal = val === 0 ? tubProductionQty : val;
-          const tubUsed = productionEntries.reduce((sum, e) => e.componentType === "TUB" ? sum + toNumber(e.acceptedComponents) : sum, 0);
-          return Math.max(effectiveVal - tubUsed, 0);
-        });
-      }
-    } else {
-      setRemainingLidLabels(() => {
-        const effectiveVal = val === 0 ? totalProductionQty : val;
-        const used = productionEntries.reduce((sum, e) => (e.componentType === "LID" || e.componentType === "SINGLE") ? sum + toNumber(e.acceptedComponents) : sum, 0);
-        return Math.max(effectiveVal - used, 0);
-      });
-    }
-  }, [entry?.orderId, entry?.productId, isLidAndTub, lidProductionQty, tubProductionQty, totalProductionQty, productionEntries]);
-
-  const checkAndUpdateOrderStatus = useCallback((newLidRemaining, newTubRemaining) => {
-    if (!entry?.orderId || !entry?.productId) return;
-    const allRemainingZero = isLidAndTub
-      ? (newLidRemaining === 0 && newTubRemaining === 0)
-      : newLidRemaining === 0;
-
-    if (allRemainingZero) {
-      const orders = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
-      const updatedOrders = orders.map((order) =>
-        order.id === entry.orderId
-          ? {
-              ...order,
-              products: order.products.map((product) =>
-                product.id === entry.productId ? { ...product, orderStatus: "Dispatch Pending" } : product,
-              ),
-            }
-          : order,
-      );
-      localStorage.setItem(STORAGE_KEY_IML, JSON.stringify(updatedOrders));
-      if (window.opener && window.opener.location.href.includes("orders")) window.opener.location.reload();
-    }
-  }, [entry?.orderId, entry?.productId, isLidAndTub]);
+  }, [entry?.orderId, entry?.productId, productionEntries, recomputeRemaining]);
 
   if (!entry) {
     return (
@@ -618,16 +736,28 @@ const ProductionDetails = () => {
     );
   }
 
-  // ── Derived label for header subtitle ──
   const componentLabel = activeComponentType ? ` — ${activeComponentType}` : (isLidAndTub ? " (LID & TUB)" : "");
 
-  // ── Which entries to show in history depends on activeComponentType ──
   const visibleEntries = productionEntries.filter((e) => {
     if (!activeComponentType) return true;
     if (activeComponentType === "LID") return e.componentType === "LID" || e.componentType === "SINGLE";
     if (activeComponentType === "TUB") return e.componentType === "TUB";
     return true;
   });
+
+  const currentIsInProduction = isLidAndTub
+    ? (activeComponentType === "LID" ? isLidInProduction : isTubInProduction)
+    : isSingleInProduction;
+  const currentIsCompleted = isLidAndTub
+    ? (activeComponentType === "LID" ? isLidProductionCompleted : isTubProductionCompleted)
+    : isProductionCompleted;
+
+  const currentMarkComplete = isLidAndTub
+    ? (activeComponentType === "LID" ? markLidComplete : markTubComplete)
+    : markSingleComplete;
+  const setCurrentMarkComplete = isLidAndTub
+    ? (activeComponentType === "LID" ? setMarkLidComplete : setMarkTubComplete)
+    : setMarkSingleComplete;
 
   return (
     <div className="min-h-screen bg-gray-50 p-[1vw]">
@@ -648,12 +778,18 @@ const ProductionDetails = () => {
         </div>
 
         {/* Production Completed Banner */}
-        {isProductionCompleted && (
+        {currentIsCompleted && (
           <div className="mx-[1.5vw] mt-[1vw] p-[0.75vw] bg-green-50 border-2 border-green-400 rounded-[0.6vw] flex items-center gap-[0.75vw]">
             <span className="text-[1.3vw]">✅</span>
             <div>
-              <p className="text-[.95vw] font-bold text-green-800">Production Completed</p>
-              <p className="text-[.8vw] text-green-600">This production has been marked as complete. No new entries can be added.</p>
+              <p className="text-[.95vw] font-bold text-green-800">
+                {isLidAndTub ? `${activeComponentType} Production Completed` : "Production Completed"}
+              </p>
+              <p className="text-[.8vw] text-green-600">
+                {isLidAndTub
+                  ? `${activeComponentType} production has been marked as complete. No new ${activeComponentType} entries can be added.`
+                  : "This production has been marked as complete. No new entries can be added."}
+              </p>
             </div>
           </div>
         )}
@@ -671,42 +807,50 @@ const ProductionDetails = () => {
                   <span className="text-[1.1vw]">+</span> Add Person
                 </button>
 
-                {/* Mark as In Production button */}
-                <button
-                  className={`px-[.85vw] py-[.35vw] text-[.85vw] rounded-[0.6vw] transition-all ${
-                    isInProduction || isProductionCompleted
+                {isLidAndTub ? (
+                  <button
+                    className={`px-[.85vw] py-[.35vw] text-[.85vw] rounded-[0.6vw] transition-all ${currentIsInProduction || currentIsCompleted
                       ? "bg-green-600 text-white opacity-75 cursor-not-allowed"
                       : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                  }`}
-                  onClick={() => {
-                    if (isInProduction || isProductionCompleted) return;
-                    const orderData = JSON.parse(localStorage.getItem(STORAGE_KEY_IML) || "[]");
-                    const updatedOrders = orderData.map((order) =>
-                      order.id === entry.orderId
-                        ? { ...order, products: order.products.map((product) => product.id === entry.productId ? { ...product, orderStatus: "In Production" } : product) }
-                        : order,
-                    );
-                    localStorage.setItem(STORAGE_KEY_IML, JSON.stringify(updatedOrders));
-                    if (window.opener && window.opener.location.href.includes("orders")) window.opener.location.reload();
-                    else window.opener?.dispatchEvent?.(new CustomEvent("ordersUpdated"));
-                    alert("✅ Product marked as In Production!");
-                    navigate("/iml/production", { state: { refreshData: true } });
-                  }}
-                >
-                  {isInProduction || isProductionCompleted ? "✔ Marked as In Production" : "Mark as In Production"}
-                </button>
+                      }`}
+                    onClick={() => {
+                      if (currentIsInProduction || currentIsCompleted) return;
+                      handleMarkInProduction(activeComponentType);
+                    }}
+                  >
+                    {currentIsInProduction || currentIsCompleted
+                      ? `✔ ${activeComponentType} In Production`
+                      : `Mark ${activeComponentType} as In Production`}
+                  </button>
+                ) : (
+                  <button
+                    className={`px-[.85vw] py-[.35vw] text-[.85vw] rounded-[0.6vw] transition-all ${isSingleInProduction || isProductionCompleted
+                      ? "bg-green-600 text-white opacity-75 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                      }`}
+                    onClick={() => {
+                      if (isSingleInProduction || isProductionCompleted) return;
+                      handleMarkInProduction(null);
+                    }}
+                  >
+                    {isSingleInProduction || isProductionCompleted ? "✔ Marked as In Production" : "Mark as In Production"}
+                  </button>
+                )}
               </div>
             </h3>
 
-            {/* ── GATE notice when not in production ── */}
-            {!isInProduction && !isProductionCompleted && (
+            {!currentIsInProduction && !currentIsCompleted && (
               <div className="mb-[0.75vw] p-[0.6vw] bg-amber-50 border border-amber-300 rounded-[0.5vw] flex items-center gap-[0.5vw]">
                 <span>⚠️</span>
-                <p className="text-[.8vw] text-amber-800 font-medium">You must click <strong>"Mark as In Production"</strong> before adding any entries.</p>
+                <p className="text-[.8vw] text-amber-800 font-medium">
+                  You must click <strong>"{isLidAndTub ? `Mark ${activeComponentType} as In Production` : "Mark as In Production"}"</strong> before adding any entries.
+                </p>
               </div>
             )}
 
             <div className="grid grid-cols-4 gap-[1vw]">
+
+              {/* Row 1 */}
               <div>
                 <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Customer Name</label>
                 <input type="text" name="customerName" value={customerForm.customerName} onChange={handleCustomerChange} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-gray-100 border border-gray-300 rounded-[0.4vw] font-semibold" />
@@ -723,65 +867,101 @@ const ProductionDetails = () => {
                 <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Size</label>
                 <input type="text" name="size" value={customerForm.size} onChange={handleCustomerChange} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-gray-100 border border-gray-300 rounded-[0.4vw]" />
               </div>
+
+              {/* Row 2 */}
               <div>
-                <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Container Color</label>
-                <input type="text" name="containerColor" value={customerForm.containerColor} onChange={handleCustomerChange} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-gray-100 border border-gray-300 rounded-[0.4vw]" />
+                <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">LID Color</label>
+                <input type="text" value={customerForm.lidColor || "—"} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-50 border border-green-300 rounded-[0.4vw] font-semibold text-green-800" />
+              </div>
+              <div>
+                <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">TUB Color</label>
+                <input type="text" value={customerForm.tubColor || "—"} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border border-blue-300 rounded-[0.4vw] font-semibold text-blue-800" />
+              </div>
+              <div>
+                <label className="block text-[.8vw] font-medium text-gray-600 mb-[0.3vw]">
+                  {isLidAndTub ? (activeComponentType === "LID" ? "LID Order Qty" : "TUB Order Qty") : `Order Qty (${entry?.imlType})`}
+                </label>
+                <input type="text"
+                  value={formatNumber(isLidAndTub ? (activeComponentType === "LID" ? orderQtyDisplay.lidOrderQty : orderQtyDisplay.tubOrderQty) : orderQtyDisplay.singleOrderQty)}
+                  disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-gray-100 border border-gray-300 rounded-[0.4vw] font-semibold text-gray-700"
+                />
+              </div>
+              <div>
+                <label className="block text-[.8vw] font-medium text-gray-600 mb-[0.3vw]">
+                  {isLidAndTub ? (activeComponentType === "LID" ? "LID Production Qty" : "TUB Production Qty") : `Production Qty (${entry?.imlType})`}
+                </label>
+                <input type="text"
+                  value={formatNumber(isLidAndTub ? (activeComponentType === "LID" ? orderQtyDisplay.lidProdQty : orderQtyDisplay.tubProdQty) : orderQtyDisplay.singleProdQty)}
+                  disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800"
+                />
               </div>
 
-              {/* ── Production Qty: only show relevant side based on activeComponentType ── */}
-              {isLidAndTub ? (
-                <>
-                  {(activeComponentType === "LID") && (
-                    <div className="grid grid-cols-2 gap-[.85vw]">
-                      <div>
-                        <label className="block text-[.745vw] font-medium text-gray-700 mb-[0.3vw]">LID Production Qty</label>
-                        <input type="text" value={formatNumber(lidProductionQty)} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800" />
-                      </div>
-                      <div>
-                        <label className="block text-[.745vw] font-semibold text-blue-700 mb-[0.3vw]">Total LID Labels Received</label>
-                        <input type="text" value={totalLabelsReceived.lid === 0 ? formatNumber(lidProductionQty) : totalLabelsReceived.lid} onChange={handleTotalLabelsChange("lid")} min="0" className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 font-semibold text-blue-800" placeholder="Enter total LID received" />
-                      </div>
-                    </div>
-                  )}
-                  {(activeComponentType === "TUB") && (
-                    <div className="grid grid-cols-2 gap-[.85vw]">
-                      <div>
-                        <label className="block text-[.745vw] font-medium text-gray-700 mb-[0.3vw]">TUB Production Qty</label>
-                        <input type="text" value={formatNumber(tubProductionQty)} disabled className="w-full text-[.745vw] px-[0.75vw] py-[0.4vw] bg-blue-100 border border-blue-300 rounded-[0.4vw] font-bold text-blue-800" />
-                      </div>
-                      <div>
-                        <label className="block text-[.745vw] font-semibold text-purple-700 mb-[0.3vw]">Total TUB Labels Received</label>
-                        <input type="text" value={totalLabelsReceived.tub === 0 ? formatNumber(tubProductionQty) : totalLabelsReceived.tub} onChange={handleTotalLabelsChange("tub")} min="0" className="w-full text-[.745vw] px-[0.75vw] py-[0.4vw] bg-purple-50 border-2 border-purple-300 rounded-[0.4vw] focus:ring-2 focus:ring-purple-500 font-semibold text-purple-800" placeholder="Enter total TUB received" />
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="grid grid-cols-2 gap-[.85vw]">
-                  <div>
-                    <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Production Qty {entry?.imlType}</label>
-                    <input type="text" value={formatNumber(totalProductionQty)} disabled className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-green-100 border border-green-300 rounded-[0.4vw] font-bold text-green-800" />
-                  </div>
-                  <div>
+              {/* Row 3 */}
+              <div>
+                {isLidAndTub ? (
+                  <>
+                    <label className="block text-[.8vw] font-semibold mb-[0.3vw] text-blue-700">
+                      Total {activeComponentType} Labels Received
+                    </label>
+                    <input
+                      type="number"
+                      value={activeComponentType === "LID" ? (totalLabelsReceived.lid || "") : (totalLabelsReceived.tub || "")}
+                      onChange={activeComponentType === "LID" ? handleTotalLabelsChange("lid") : handleTotalLabelsChange("tub")}
+                      min="0"
+                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 font-semibold text-blue-800"
+                      placeholder="Labels received"
+                    />
+                  </>
+                ) : (
+                  <>
                     <label className="block text-[.8vw] font-semibold text-blue-700 mb-[0.3vw]">Total Labels Received <span className="text-blue-500">*</span></label>
-                    <input type="text" value={totalLabelsReceived.single === 0 ? formatNumber(totalProductionQty) : totalLabelsReceived.single} onChange={handleTotalLabelsChange("single")} min="0" className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 font-semibold text-blue-800" placeholder="Enter total received" />
-                  </div>
-                </div>
-              )}
-            </div>
+                    <input
+                      type="number"
+                      value={totalLabelsReceived.single || ""}
+                      onChange={handleTotalLabelsChange("single")}
+                      min="0"
+                      className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-blue-50 border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500 font-semibold text-blue-800"
+                      placeholder="Enter total received"
+                    />
+                  </>
+                )}
+              </div>
 
-            {/* Machine Number and Received By */}
-            {(showLid || (isLidAndTub && activeComponentType === "LID")) ? (
-              <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
+              {/* Machine Number */}
+              {(showLid || (isLidAndTub && activeComponentType === "LID")) ? (
                 <div className="relative" ref={lidMachineInputRef}>
                   <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">LID Machine Number</label>
-                  <input type="text" name="lidMachineNumber" value={customerForm.lidMachineNumber} onChange={handleLidMachineInputChange} onFocus={() => setLidMachineDropdownOpen(true)} placeholder="Type or select machine..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-green-300 rounded-[0.4vw] focus:ring-2 focus:ring-green-500" />
+                  <input type="text" name="lidMachineNumber" value={customerForm.lidMachineNumber} onChange={handleLidMachineInputChange} onFocus={() => setLidMachineDropdownOpen(true)} placeholder="Type or select..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-green-300 rounded-[0.4vw] focus:ring-2 focus:ring-green-500" />
                   {lidMachineDropdownOpen && filteredMachines.length > 0 && (
                     <div className="absolute z-50 w-full mt-[0.2vw] bg-white border border-gray-300 rounded-[0.4vw] shadow-lg max-h-[12vw] overflow-y-auto">
                       {filteredMachines.map((machine) => <div key={`lid-${machine}`} onClick={() => handleLidMachineSelect(machine)} className="px-[0.75vw] py-[0.5vw] text-[.85vw] hover:bg-green-100 cursor-pointer">{machine}</div>)}
                     </div>
                   )}
                 </div>
+              ) : (showTub || (isLidAndTub && activeComponentType === "TUB")) ? (
+                <div className="relative" ref={tubMachineInputRef}>
+                  <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">TUB Machine Number</label>
+                  <input type="text" name="tubMachineNumber" value={customerForm.tubMachineNumber} onChange={handleTubMachineInputChange} onFocus={() => setTubMachineDropdownOpen(true)} placeholder="Type or select..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
+                  {tubMachineDropdownOpen && filteredMachines.length > 0 && (
+                    <div className="absolute z-50 w-full mt-[0.2vw] bg-white border border-gray-300 rounded-[0.4vw] shadow-lg max-h-[12vw] overflow-y-auto">
+                      {filteredMachines.map((machine) => <div key={`tub-${machine}`} onClick={() => handleTubMachineSelect(machine)} className="px-[0.75vw] py-[0.5vw] text-[.85vw] hover:bg-blue-100 cursor-pointer">{machine}</div>)}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="relative" ref={lidMachineInputRef}>
+                  <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Machine Number</label>
+                  <input type="text" name="lidMachineNumber" value={customerForm.lidMachineNumber} onChange={handleLidMachineInputChange} onFocus={() => setLidMachineDropdownOpen(true)} placeholder="Type or select..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
+                  {lidMachineDropdownOpen && filteredMachines.length > 0 && (
+                    <div className="absolute z-50 w-full mt-[0.2vw] bg-white border border-gray-300 rounded-[0.4vw] shadow-lg max-h-[12vw] overflow-y-auto">
+                      {filteredMachines.map((machine) => <div key={machine} onClick={() => handleLidMachineSelect(machine)} className="px-[0.75vw] py-[0.5vw] text-[.85vw] hover:bg-blue-100 cursor-pointer">{machine}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Received By */}
+              {(showLid || (isLidAndTub && activeComponentType === "LID")) ? (
                 <div>
                   <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">LID Received By</label>
                   <select name="lidReceivedBy" value={customerForm.lidReceivedBy} onChange={handleCustomerChange} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-green-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-green-500">
@@ -789,18 +969,7 @@ const ProductionDetails = () => {
                     {receivedByOptions.map((person) => <option key={`lid-${person}`} value={person}>{person}</option>)}
                   </select>
                 </div>
-              </div>
-            ) : (showTub || (isLidAndTub && activeComponentType === "TUB")) ? (
-              <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
-                <div className="relative" ref={tubMachineInputRef}>
-                  <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">TUB Machine Number</label>
-                  <input type="text" name="tubMachineNumber" value={customerForm.tubMachineNumber} onChange={handleTubMachineInputChange} onFocus={() => setTubMachineDropdownOpen(true)} placeholder="Type or select machine..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
-                  {tubMachineDropdownOpen && filteredMachines.length > 0 && (
-                    <div className="absolute z-50 w-full mt-[0.2vw] bg-white border border-gray-300 rounded-[0.4vw] shadow-lg max-h-[12vw] overflow-y-auto">
-                      {filteredMachines.map((machine) => <div key={`tub-${machine}`} onClick={() => handleTubMachineSelect(machine)} className="px-[0.75vw] py-[0.5vw] text-[.85vw] hover:bg-blue-100 cursor-pointer">{machine}</div>)}
-                    </div>
-                  )}
-                </div>
+              ) : (showTub || (isLidAndTub && activeComponentType === "TUB")) ? (
                 <div>
                   <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">TUB Received By</label>
                   <select name="tubReceivedBy" value={customerForm.tubReceivedBy} onChange={handleCustomerChange} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-blue-300 rounded-[0.4vw] cursor-pointer focus:ring-2 focus:ring-blue-500">
@@ -808,19 +977,7 @@ const ProductionDetails = () => {
                     {receivedByOptions.map((person) => <option key={`tub-${person}`} value={person}>{person}</option>)}
                   </select>
                 </div>
-              </div>
-            ) : (
-              // Single type
-              <div className="grid grid-cols-2 gap-[1vw] mt-[1vw]">
-                <div className="relative" ref={lidMachineInputRef}>
-                  <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Machine Number</label>
-                  <input type="text" name="lidMachineNumber" value={customerForm.lidMachineNumber} onChange={handleLidMachineInputChange} onFocus={() => setLidMachineDropdownOpen(true)} placeholder="Type or select machine..." className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
-                  {lidMachineDropdownOpen && filteredMachines.length > 0 && (
-                    <div className="absolute z-50 w-full mt-[0.2vw] bg-white border border-gray-300 rounded-[0.4vw] shadow-lg max-h-[12vw] overflow-y-auto">
-                      {filteredMachines.map((machine) => <div key={machine} onClick={() => handleLidMachineSelect(machine)} className="px-[0.75vw] py-[0.5vw] text-[.85vw] hover:bg-blue-100 cursor-pointer">{machine}</div>)}
-                    </div>
-                  )}
-                </div>
+              ) : (
                 <div>
                   <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Received By</label>
                   <select name="lidReceivedBy" value={customerForm.lidReceivedBy} onChange={handleCustomerChange} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border border-gray-300 rounded-[0.4vw] cursor-pointer">
@@ -828,12 +985,13 @@ const ProductionDetails = () => {
                     {receivedByOptions.map((person) => <option key={person} value={person}>{person}</option>)}
                   </select>
                 </div>
-              </div>
-            )}
+              )}
+
+            </div>
           </div>
 
-          {/* ── Add Entry Form (only shown when not completed) ── */}
-          {!isProductionCompleted && (
+          {/* Add Entry Form */}
+          {!currentIsCompleted && (
             <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-[0.6vw] border-2 border-blue-200 p-[1vw]">
               <h3 className="text-[1.1vw] font-semibold text-blue-900 mb-[1vw] flex items-center gap-2">
                 <span className="text-[1.3vw]">➕</span>
@@ -842,7 +1000,7 @@ const ProductionDetails = () => {
 
               {/* LID Entry Form */}
               {(showLid || (isLidAndTub && activeComponentType === "LID")) && (
-                <div className={`mb-[1.5vw] p-[0.8vw] bg-gradient-to-br from-green-50 to-emerald-50 rounded-[0.5vw] border-2 border-green-200`}>
+                <div className="mb-[1.5vw] p-[0.8vw] bg-gradient-to-br from-green-50 to-emerald-50 rounded-[0.5vw] border-2 border-green-200">
                   <h4 className="text-[1vw] font-semibold text-green-800 mb-[0.8vw] flex items-center gap-2">
                     LID Entry
                     <span className="text-[.8vw] text-green-600 ml-2">Machine: {customerForm.lidMachineNumber || "Not set"} | Received By: {customerForm.lidReceivedBy || "Not set"}</span>
@@ -861,7 +1019,7 @@ const ProductionDetails = () => {
                     </div>
                     <div>
                       <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Accepted LID Component <span className="text-red-500">*</span></label>
-                      <input type="number" name="acceptedComponents" value={lidEntryForm.acceptedComponents} onChange={handleLidEntryChange} placeholder="Enter accepted qty" min="0" max={formatNumber(remainingLidLabels)} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-green-300 rounded-[0.4vw] focus:ring-2 focus:ring-green-500" />
+                      <input type="number" name="acceptedComponents" value={lidEntryForm.acceptedComponents} onChange={handleLidEntryChange} placeholder="Enter accepted qty" min="0" className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-green-300 rounded-[0.4vw] focus:ring-2 focus:ring-green-500" />
                     </div>
                     <div>
                       <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Rejected LID Component <span className="text-red-500">*</span></label>
@@ -886,7 +1044,14 @@ const ProductionDetails = () => {
                       </select>
                     </div>
                     <div className="flex items-end">
-                      <button onClick={addLidProductionEntry} disabled={!isInProduction} className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-green-700 hover:to-emerald-700 transition-all shadow-md ${!isInProduction ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                      <button
+                        onClick={addLidProductionEntry}
+                        disabled={isLidProductionCompleted || !(isLidAndTub ? isLidInProduction : isSingleInProduction)}
+                        className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-green-700 hover:to-emerald-700 transition-all shadow-md ${isLidProductionCompleted || !(isLidAndTub ? isLidInProduction : isSingleInProduction)
+                          ? "opacity-50 cursor-not-allowed"
+                          : "cursor-pointer"
+                          }`}
+                      >
                         Add LID Entry
                       </button>
                     </div>
@@ -915,7 +1080,7 @@ const ProductionDetails = () => {
                     </div>
                     <div>
                       <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Accepted TUB Component <span className="text-red-500">*</span></label>
-                      <input type="number" name="acceptedComponents" value={tubEntryForm.acceptedComponents} onChange={handleTubEntryChange} placeholder="Enter accepted qty" min="0" max={formatNumber(remainingTubLabels)} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" name="acceptedComponents" value={tubEntryForm.acceptedComponents} onChange={handleTubEntryChange} placeholder="Enter accepted qty" min="0" className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-blue-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
                       <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Rejected TUB Component <span className="text-red-500">*</span></label>
@@ -940,7 +1105,14 @@ const ProductionDetails = () => {
                       </select>
                     </div>
                     <div className="flex items-end">
-                      <button onClick={addTubProductionEntry} disabled={!isInProduction} className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${!isInProduction ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                      <button
+                        onClick={addTubProductionEntry}
+                        disabled={isTubProductionCompleted || !isTubInProduction}
+                        className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${isTubProductionCompleted || !isTubInProduction
+                          ? "opacity-50 cursor-not-allowed"
+                          : "cursor-pointer"
+                          }`}
+                      >
                         Add TUB Entry
                       </button>
                     </div>
@@ -948,7 +1120,7 @@ const ProductionDetails = () => {
                 </div>
               )}
 
-              {/* Single (non LID&TUB, non pure LID, non pure TUB) */}
+              {/* Single */}
               {showSingle && (
                 <div className="grid grid-cols-4 gap-[1vw] mb-[1vw]">
                   <div>
@@ -964,7 +1136,7 @@ const ProductionDetails = () => {
                   </div>
                   <div>
                     <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Accepted Components <span className="text-red-500">*</span></label>
-                    <input type="number" name="acceptedComponents" value={lidEntryForm.acceptedComponents} onChange={handleLidEntryChange} placeholder="Enter accepted qty" min="0" max={formatNumber(remainingLidLabels)} className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
+                    <input type="number" name="acceptedComponents" value={lidEntryForm.acceptedComponents} onChange={handleLidEntryChange} placeholder="Enter accepted qty" min="0" className="w-full text-[.85vw] px-[0.75vw] py-[0.4vw] bg-white border-2 border-gray-300 rounded-[0.4vw] focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-[.8vw] font-medium text-gray-700 mb-[0.3vw]">Rejected Components <span className="text-red-500">*</span></label>
@@ -989,7 +1161,14 @@ const ProductionDetails = () => {
                     </select>
                   </div>
                   <div className="flex items-end">
-                    <button onClick={addProductionEntry} disabled={!isInProduction} className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${!isInProduction ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                    <button
+                      onClick={addProductionEntry}
+                      disabled={isProductionCompleted || !isSingleInProduction}
+                      className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${isProductionCompleted || !isSingleInProduction
+                        ? "opacity-50 cursor-not-allowed"
+                        : "cursor-pointer"
+                        }`}
+                    >
                       Add Entry
                     </button>
                   </div>
@@ -1097,21 +1276,20 @@ const ProductionDetails = () => {
           </div>
 
           {/* Submit / Save area */}
-          {!isProductionCompleted && (
+          {!currentIsCompleted && (
             <div className="flex justify-between items-center gap-[1vw]">
-              {/* ── Mark Production Complete checkbox ── */}
               <label className="flex items-center gap-[0.75vw] p-[0.75vw] bg-orange-50 border-2 border-orange-300 rounded-[0.5vw] cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={markProductionComplete}
-                  onChange={(e) => setMarkProductionComplete(e.target.checked)}
+                  checked={currentMarkComplete}
+                  onChange={(e) => setCurrentMarkComplete(e.target.checked)}
                   className="w-[1.2vw] h-[1.2vw] accent-orange-600 cursor-pointer"
                   id="markComplete"
                 />
                 <span className="text-[.9vw] font-semibold text-orange-800">
-                  Mark Production as Complete
+                  {isLidAndTub ? `Mark ${activeComponentType} Production as Complete` : "Mark Production as Complete"}
                 </span>
-                {markProductionComplete && (
+                {currentMarkComplete && (
                   <span className="text-[.75vw] text-orange-600 ml-1">(You will be asked to confirm before saving)</span>
                 )}
               </label>
@@ -1125,7 +1303,7 @@ const ProductionDetails = () => {
                   disabled={productionEntries.length === 0}
                   className="px-[1.5vw] py-[.6vw] bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-[0.6vw] font-semibold text-[0.9vw] hover:from-green-700 hover:to-emerald-700 transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {markProductionComplete ? "✅ Save & Complete Production" : "💾 Save"}
+                  {currentMarkComplete ? "✅ Save & Complete Production" : "💾 Save"}
                 </button>
               </div>
             </div>
@@ -1133,37 +1311,31 @@ const ProductionDetails = () => {
         </div>
       </div>
 
-      {/* ── Production Complete Confirmation Modal ── */}
+      {/* Production Complete Confirmation Modal */}
       {showCompleteConfirmModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-[999] flex items-center justify-center p-[2vw]">
           <div className="bg-white rounded-[1vw] shadow-2xl max-w-[40vw] w-full overflow-hidden">
-            {/* Modal Header */}
             <div className="bg-gradient-to-r from-orange-500 to-red-500 p-[1.25vw]">
               <h3 className="text-[1.2vw] font-black text-white flex items-center gap-[0.5vw]">
                 <span className="text-[1.4vw]">⚠️</span> Confirm Production Complete
               </h3>
             </div>
-
-            {/* Modal Body */}
             <div className="p-[1.5vw] space-y-[1vw]">
               <div className="p-[1vw] bg-orange-50 border-2 border-orange-200 rounded-[0.6vw]">
                 <p className="text-[.95vw] font-semibold text-orange-900 mb-[0.5vw]">
-                  Are you sure you want to mark this production as complete?
+                  Are you sure you want to mark {isLidAndTub ? pendingCompleteTarget : "this production"} as complete?
                 </p>
                 <p className="text-[.85vw] text-orange-700">
-                  ⚠️ <strong>Once marked as complete, you cannot add any more entries</strong> to this production job. This action cannot be undone.
+                  ⚠️ <strong>Once marked as complete, you cannot add any more {isLidAndTub ? pendingCompleteTarget : ""} entries</strong> to this production job. This action cannot be undone.
                 </p>
               </div>
-
               <div className="p-[0.75vw] bg-gray-50 border border-gray-200 rounded-[0.5vw]">
                 <p className="text-[.8vw] text-gray-600 font-medium">Production details:</p>
                 <p className="text-[.85vw] text-gray-800 font-semibold mt-[0.25vw]">{customerForm.customerName} — {customerForm.imlName}</p>
-                <p className="text-[.8vw] text-gray-600">{customerForm.product} | {customerForm.size}{activeComponentType ? ` | ${activeComponentType}` : ""}</p>
+                <p className="text-[.8vw] text-gray-600">{customerForm.product} | {customerForm.size}{pendingCompleteTarget && pendingCompleteTarget !== "SINGLE" ? ` | ${pendingCompleteTarget}` : ""}</p>
                 <p className="text-[.8vw] text-gray-600 mt-[0.25vw]">Total entries: {productionEntries.length}</p>
               </div>
             </div>
-
-            {/* Modal Footer */}
             <div className="flex gap-[1vw] p-[1.25vw] bg-gray-50 border-t border-gray-200">
               <button
                 onClick={() => setShowCompleteConfirmModal(false)}
@@ -1174,7 +1346,7 @@ const ProductionDetails = () => {
               <button
                 onClick={() => {
                   setShowCompleteConfirmModal(false);
-                  performSave(true);
+                  performSave(pendingCompleteTarget);
                 }}
                 className="flex-1 px-[1vw] py-[0.6vw] bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-[0.5vw] font-bold text-[0.9vw] hover:from-orange-600 hover:to-red-600 transition-all shadow-md cursor-pointer"
               >
@@ -1193,14 +1365,11 @@ const ProductionDetails = () => {
               <h3 className="flex items-center gap-[clamp(8px,0.8vw,12px)] font-black text-[clamp(18px,1.6vw,24px)]">Manage Persons</h3>
             </div>
             <div className="p-[clamp(16px,1.5vw,24px)] space-y-[clamp(16px,1.5vw,24px)]">
-              {/* Tabs */}
               <div className="grid grid-cols-3 gap-[clamp(6px,0.6vw,10px)] text-center">
                 {[{ key: "received", label: "Received By", active: "bg-green-500" }, { key: "packing", label: "Packing", active: "bg-orange-500" }, { key: "approved", label: "Approved", active: "bg-red-500" }].map(({ key, label, active }) => (
                   <button key={key} onClick={() => setPersonType(key)} className={`px-[clamp(12px,1vw,18px)] py-[clamp(8px,0.8vw,14px)] rounded-[clamp(10px,1vw,16px)] font-semibold transition-all text-[clamp(13px,0.9vw,16px)] ${personType === key ? `${active} text-white shadow-lg` : "bg-gray-100 hover:bg-gray-200 text-gray-700"}`}>{label}</button>
                 ))}
               </div>
-
-              {/* Current list */}
               <div className="space-y-[clamp(8px,0.8vw,12px)]">
                 <label className="block font-bold text-gray-800 capitalize text-[clamp(14px,1vw,18px)]">Current {personType.replace("_", " ")} Persons:</label>
                 <div className="max-h-[20vh] overflow-y-auto bg-gray-50 p-[clamp(10px,0.9vw,16px)] rounded-[clamp(10px,1vw,16px)] border border-gray-200">
@@ -1218,14 +1387,10 @@ const ProductionDetails = () => {
                   ))}
                 </div>
               </div>
-
-              {/* Add new */}
               <div>
                 <label className="block font-bold text-gray-800 mb-[clamp(8px,0.8vw,12px)] text-[clamp(14px,1vw,18px)]">Add New Person</label>
                 <input type="text" value={newPerson} onChange={(e) => setNewPerson(e.target.value)} placeholder={`Enter ${personType.replace("_", " ")} name...`} className="w-full border border-gray-300 px-[clamp(12px,1vw,18px)] py-[clamp(10px,0.9vw,16px)] rounded-[clamp(10px,1vw,16px)] font-semibold text-[clamp(14px,0.9vw,16px)] focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all" />
               </div>
-
-              {/* Actions */}
               <div className="flex gap-[clamp(10px,1vw,16px)] pt-[clamp(12px,1vw,20px)]">
                 <button onClick={() => {
                   if (!newPerson.trim()) return;

@@ -9,6 +9,7 @@ export default function RefundDetailsModal({ orders, refundDetailsModal, setRefu
 
   const [expandedCards, setExpandedCards] = useState(() => ({}));
   const [readIds, setReadIds] = useState(() => new Set(storedReadIds));
+  const [viewingDoc, setViewingDoc] = useState(null); // { src, name, type }
 
   const getKey = (order, idx) => order.id || order.orderNumber || String(idx);
 
@@ -193,24 +194,64 @@ export default function RefundDetailsModal({ orders, refundDetailsModal, setRefu
                         </div>
                       )}
 
-                      {/* Refund info */}
-                      {order.refundInfo && (
+                        {/* ── Refund info ── */}
+                        {order.refundInfo && (
                         <div className="bg-orange-50 border border-orange-200 rounded-lg px-[1vw] py-[0.65vw] space-y-[0.4vw]">
                           <p className="text-[0.68vw] text-orange-500 font-semibold uppercase tracking-wide">💰 Refund Details</p>
-                          <div>
-                            <p className="text-[0.68vw] text-gray-400">Remarks</p>
-                            <p className="text-[0.85vw] text-gray-800">{order.refundInfo.remarks}</p>
+                          <div className="grid grid-cols-2 gap-[0.75vw]">
+                            {order.refundInfo.date && (
+                              <div>
+                                <p className="text-[0.68vw] text-gray-400">Refund Date</p>
+                                <p className="text-[0.85vw] font-semibold text-gray-800">
+                                  {new Date(order.refundInfo.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                                </p>
+                              </div>
+                            )}
+                            {order.refundInfo.referenceNo && (
+                              <div>
+                                <p className="text-[0.68vw] text-gray-400">Reference No</p>
+                                <p className="text-[0.85vw] font-semibold text-gray-800">{order.refundInfo.referenceNo}</p>
+                              </div>
+                            )}
                           </div>
                           {order.refundInfo.documentName && (
-                            <div className="flex items-center gap-[0.5vw]">
+                            <div className="flex items-center gap-[0.75vw] mt-[0.25vw]">
                               <span className="text-[0.72vw] text-gray-400">Document:</span>
-                              <a
-                                href={order.refundInfo.document}
-                                download={order.refundInfo.documentName}
-                                className="text-[0.8vw] text-blue-600 hover:text-blue-800 underline"
-                              >
-                                📎 {order.refundInfo.documentName}
-                              </a>
+                              <span className="text-[0.8vw] text-gray-700 font-medium">📎 {order.refundInfo.documentName}</span>
+                              {(() => {
+                                const docType = order.refundInfo.documentType || "";
+                                const docName = order.refundInfo.documentName || "";
+                                const isImg = docType.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(docName);
+                                const isPdf = docType === "application/pdf" || /\.pdf$/i.test(docName);
+                                if (isImg || isPdf) {
+                                  return (
+                                    <button
+                                      onClick={() => setViewingDoc({
+                                        src: order.refundInfo.document,
+                                        name: order.refundInfo.documentName,
+                                        isImg,
+                                        isPdf,
+                                      })}
+                                      className="flex items-center gap-[0.25vw] text-[0.75vw] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                                    >
+                                      <svg className="w-[0.85vw] h-[0.85vw]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      View
+                                    </button>
+                                  );
+                                }
+                                return (
+                                  <a
+                                    href={order.refundInfo.document}
+                                    download={order.refundInfo.documentName}
+                                    className="text-[0.75vw] text-blue-600 hover:text-blue-800 underline font-semibold"
+                                  >
+                                    Download
+                                  </a>
+                                );
+                              })()}
                             </div>
                           )}
                           <p className="text-[0.68vw] text-gray-400">Submitted: {fmtDate(order.refundInfo.submittedAt)}</p>
@@ -329,6 +370,42 @@ export default function RefundDetailsModal({ orders, refundDetailsModal, setRefu
           </button>
         </div>
       </div>
+
+      {/* Document Viewer Lightbox */}
+      {viewingDoc && (
+        <div
+          className="fixed inset-0 bg-black/80 z-[50030] flex items-center justify-center p-[2vw]"
+          onClick={() => setViewingDoc(null)}
+        >
+          <div
+            className="bg-white rounded-xl overflow-hidden shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-[1.25vw] py-[0.75vw] border-b border-gray-200 bg-gray-50">
+              <span className="text-[0.9vw] font-semibold text-gray-700 truncate">📎 {viewingDoc.name}</span>
+              <button
+                onClick={() => setViewingDoc(null)}
+                className="text-gray-500 hover:text-gray-800 text-[1.6vw] font-bold cursor-pointer leading-none"
+              >×</button>
+            </div>
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-gray-100 p-[1vw]">
+              {viewingDoc.isImg ? (
+                <img
+                  src={viewingDoc.src}
+                  alt={viewingDoc.name}
+                  className="max-w-full max-h-[75vh] object-contain rounded"
+                />
+              ) : viewingDoc.isPdf ? (
+                <iframe
+                  src={viewingDoc.src}
+                  title={viewingDoc.name}
+                  className="w-full h-[75vh] rounded border-0"
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
