@@ -482,8 +482,22 @@ const ProductionDetails = () => {
   const addLidProductionEntry = () => {
     if (!checkCanAddEntry("LID")) return;
 
-    if (!lidEntryForm.acceptedComponents || !lidEntryForm.rejectedComponents || !lidEntryForm.packingIncharge || !lidEntryForm.approvedBy || !customerForm.lidMachineNumber || !customerForm.lidReceivedBy) {
-      alert("Please fill all required fields for LID (including Machine Number and Received By)");
+    // if (!lidEntryForm.acceptedComponents || !lidEntryForm.rejectedComponents || !lidEntryForm.packingIncharge || !lidEntryForm.approvedBy || !customerForm.lidMachineNumber || !customerForm.lidReceivedBy) {
+    //   alert("Please fill all required fields for LID (including Machine Number and Received By)");
+    //   return;
+    // }
+    let missingFields = [];
+
+    if (!customerForm.lidMachineNumber) missingFields.push("Machine No");
+    if (!customerForm.lidReceivedBy) missingFields.push("Received By");
+    if (!lidEntryForm.acceptedComponents) missingFields.push("Accepted Component");
+    if (!lidEntryForm.tubComponents) missingFields.push("TUB Component");
+    if (!lidEntryForm.labelWastage) missingFields.push("Label Wastage");
+    if (!lidEntryForm.packingIncharge) missingFields.push("Packing Incharge");
+    if (!lidEntryForm.approvedBy) missingFields.push("Approved By");
+
+    if (missingFields.length > 0) {
+      alert("Please fill the following required fields for LID:\n\n" + missingFields.join("\n"));
       return;
     }
 
@@ -514,8 +528,22 @@ const ProductionDetails = () => {
   const addTubProductionEntry = () => {
     if (!checkCanAddEntry("TUB")) return;
 
-    if (!tubEntryForm.acceptedComponents || !tubEntryForm.rejectedComponents || !tubEntryForm.packingIncharge || !tubEntryForm.approvedBy || !customerForm.tubMachineNumber || !customerForm.tubReceivedBy) {
-      alert("Please fill all required fields for TUB (including Machine Number and Received By)");
+    // if (!tubEntryForm.acceptedComponents || !tubEntryForm.rejectedComponents || !tubEntryForm.packingIncharge || !tubEntryForm.approvedBy || !customerForm.tubMachineNumber || !customerForm.tubReceivedBy) {
+    //   alert("Please fill all required fields for TUB (including Machine Number and Received By)");
+    //   return;
+    // }
+
+    let missingTubFields = [];
+
+    if (!customerForm.tubMachineNumber) missingTubFields.push("Machine No");
+    if (!customerForm.tubReceivedBy) missingTubFields.push("Received By");
+    if (!tubEntryForm.acceptedComponents) missingTubFields.push("Accepted Component");
+    if (!tubEntryForm.rejectedComponents) missingTubFields.push("Rejected Component");
+    if (!tubEntryForm.packingIncharge) missingTubFields.push("Packing Incharge");
+    if (!tubEntryForm.approvedBy) missingTubFields.push("Approved By");
+
+    if (missingTubFields.length > 0) {
+      alert("Please fill the following required fields for TUB:\n\n" + missingTubFields.join("\n"));
       return;
     }
 
