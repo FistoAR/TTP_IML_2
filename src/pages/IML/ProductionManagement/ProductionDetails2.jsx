@@ -230,7 +230,12 @@ const ProductionDetails = () => {
       };
     } else {
       const baseSingle = toNumber(savedTotalLabels.single);
-      return { lid: Math.max(baseSingle - lidUsed, 0), tub: 0 };
+      // For pure TUB type, entries use componentType "TUB", so subtract tubUsed
+      // For pure LID type, entries use componentType "LID"/"SINGLE", so subtract lidUsed
+      const isTubOnly = entry?.imlType === "TUB";
+      const used = isTubOnly ? tubUsed : lidUsed;
+      const remaining = Math.max(baseSingle - used, 0);
+      return { lid: remaining, tub: remaining };
     }
   }, [isLidAndTub]);
 
@@ -316,8 +321,10 @@ const ProductionDetails = () => {
         setLidProductionQty(labelTotals.lidQuantity);
         setTubProductionQty(labelTotals.tubQuantity);
       } else {
-        computedLidRemaining = Math.max(toNumber(effectiveSingle) - lidUsed, 0);
-        computedTubRemaining = Math.max(toNumber(effectiveSingle) - lidUsed, 0);
+        const isTubOnly = entry.imlType === "TUB";
+        const usedSingle = isTubOnly ? tubUsed : lidUsed;
+        computedLidRemaining = Math.max(toNumber(effectiveSingle) - usedSingle, 0);
+        computedTubRemaining = Math.max(toNumber(effectiveSingle) - usedSingle, 0);
         setRemainingLidLabels(computedLidRemaining);
         setRemainingTubLabels(computedTubRemaining);
         setTotalProductionQty(labelTotals.totalQuantity);
@@ -1341,7 +1348,7 @@ const ProductionDetails = () => {
 
       {/* Production Complete Confirmation Modal */}
       {showCompleteConfirmModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-[999] flex items-center justify-center p-[2vw]">
+        <div className="fixed inset-0 bg-[#000000b0] bg-opacity-60 z-[999] flex items-center justify-center p-[2vw]">
           <div className="bg-white rounded-[1vw] shadow-2xl max-w-[40vw] w-full overflow-hidden">
             <div className="bg-gradient-to-r from-orange-500 to-red-500 p-[1.25vw]">
               <h3 className="text-[1.2vw] font-black text-white flex items-center gap-[0.5vw]">

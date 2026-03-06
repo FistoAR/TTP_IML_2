@@ -1864,6 +1864,13 @@ const [confirmState, setConfirmState] = useState({
       (product) => product.designStatus === "approved",
     );
   };
+  const isOrderMovedToProduction = (order) => {
+    if (!order?.products || order.products.length === 0) return false;
+
+    return order.products.some(
+      (product) => (product.orderStatus === "In Production" || product.orderStatus === "Production Completed"),
+    );
+  };
 
   const isOrderMovedToPurchase = (order) => {
     if (!order?.products || order.products.length === 0) return false;
@@ -3113,13 +3120,14 @@ const [confirmState, setConfirmState] = useState({
                                           </button>
                                         ) : null;
                                       })()}
-
-                                      <button
-                                        onClick={() => handleDeleteOrder(order.id)}
-                                        className="px-[1.25vw] py-[.5vw] text-[.85vw] bg-red-500 text-white rounded-full transition-all cursor-pointer font-medium"
-                                      >
-                                        Delete Order
-                                      </button>
+                                      {!(isOrderMovedToProduction(order)) && (
+                                        <button
+                                          onClick={() => handleDeleteOrder(order.id)}
+                                          className="px-[1.25vw] py-[.5vw] text-[.85vw] bg-red-500 text-white rounded-full transition-all cursor-pointer font-medium"
+                                        >
+                                          Delete Order
+                                        </button>
+                                      )}
                                       {isOrderDesignApproved(order) &&
                                         !isOrderMovedToPurchase(order) && (
                                           <button
@@ -3487,6 +3495,8 @@ const [confirmState, setConfirmState] = useState({
                                                             product.orderStatus !==
                                                             "In Production" && product.orderStatus !==
                                                             "Order Pending" &&
+                                                            product.orderStatus !==
+                                                            "Production Completed" &&
                                                             product.orderStatus && (
                                                               <>
                                                                 <button
