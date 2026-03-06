@@ -1135,8 +1135,8 @@ const ProductionDetails = () => {
                     <div className="flex items-end">
                       <button
                         onClick={addTubProductionEntry}
-                        disabled={isTubProductionCompleted || !isTubInProduction}
-                        className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${isTubProductionCompleted || !isTubInProduction
+                        disabled={isTubProductionCompleted || !(isLidAndTub ? isTubInProduction : isSingleInProduction)}
+                        className={`w-full px-[1vw] py-[0.5vw] bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-[0.5vw] font-semibold text-[.85vw] hover:from-blue-700 hover:to-cyan-700 transition-all shadow-md ${isTubProductionCompleted || !(isLidAndTub ? isTubInProduction : isSingleInProduction)
                           ? "opacity-50 cursor-not-allowed"
                           : "cursor-pointer"
                           }`}
