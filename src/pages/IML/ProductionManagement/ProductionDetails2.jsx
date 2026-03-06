@@ -491,7 +491,7 @@ const ProductionDetails = () => {
     if (!customerForm.lidMachineNumber) missingFields.push("Machine No");
     if (!customerForm.lidReceivedBy) missingFields.push("Received By");
     if (!lidEntryForm.acceptedComponents) missingFields.push("Accepted Component");
-    if (!lidEntryForm.tubComponents) missingFields.push("TUB Component");
+    if (!lidEntryForm.rejectedComponents) missingFields.push("Rejected Component");
     if (!lidEntryForm.labelWastage) missingFields.push("Label Wastage");
     if (!lidEntryForm.packingIncharge) missingFields.push("Packing Incharge");
     if (!lidEntryForm.approvedBy) missingFields.push("Approved By");
