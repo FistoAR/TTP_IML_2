@@ -1592,7 +1592,7 @@ const validateForm = useCallback(() => {
     if (hasAnyApproved && paymentRecords.length === 0) {
       groups.push({
         step: 3,
-        message: "Payment: Record required for approved designs",
+        message: "Required - Payment: Record required for approved designs",
       });
     }
 

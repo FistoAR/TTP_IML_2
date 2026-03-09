@@ -21,8 +21,7 @@ import LabelQuantitySheet from "./pages/IML/PurchaseManagement/LabelQuantityShee
 import ProductionManagement2 from "./pages/IML/ProductionManagement/ProductionManagement2";
 import ProductionDetails2 from "./pages/IML/ProductionManagement/ProductionDetails2";
 // inventory management
-import InventoryManagement2 from "./pages/IML/InventoryManagement/InventoryManagement2";
-import InventoryDetails2 from "./pages/IML/InventoryManagement/InventoryDetails2";
+
 import InventoryManagement3 from "./pages/IML/InventoryManagement/InventoryManagement3";
 import InventoryDetails3 from "./pages/IML/InventoryManagement/InventoryDetails3";
 // Sales payment management

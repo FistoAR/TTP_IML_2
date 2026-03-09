@@ -27,18 +27,27 @@ const InventoryDetails = () => {
     loadVerifiedData(order.id);
   }, [order, navigate]);
 
-  // Load available products that haven't been verified yet
-  const loadAvailableProducts = (order) => {
+  // ===== THIS IS THE KEY FIX =====
+  // Helper function to calculate total verified quantity for a product
+  const getTotalVerifiedForProduct = (orderVerifiedEntries, productId) => {
+    // Filter ALL entries matching this productId and sum their finalQty
+    return orderVerifiedEntries
+      .filter((v) => v.productId === productId)
+      .reduce((sum, v) => sum + (parseInt(v.finalQty) || 0), 0);
+  };
+
+  // Load available products that haven't been fully verified yet
+  const loadAvailableProducts = (orderData) => {
     try {
       // Get already verified products
       const storedVerified = localStorage.getItem(
         STORAGE_KEY_INVENTORY_FOLLOWUPS,
       );
       const allVerified = storedVerified ? JSON.parse(storedVerified) : {};
-      const orderVerified = allVerified[order.id] || [];
+      const orderVerified = allVerified[orderData.id] || [];
 
       // Convert products object to array
-      const productsArray = Object.values(order.products).map(
+      const productsArray = Object.values(orderData.products).map(
         (product, idx) => ({
           ...product,
           index: idx + 1,
@@ -47,12 +56,13 @@ const InventoryDetails = () => {
 
       // Filter products that are not fully verified
       const available = productsArray.filter((product) => {
-        const verified = orderVerified.find(
-          (v) => v.productId === product.productId,
+        // SUM ALL verified quantities for this product across all sessions
+        const totalVerified = getTotalVerifiedForProduct(
+          orderVerified,
+          product.productId,
         );
-        // Include if not verified or partially verified
-        if (!verified) return true;
-        return verified.finalQty < product.producedQuantity;
+        // Include if not fully verified
+        return totalVerified < product.producedQuantity;
       });
 
       setAvailableProducts(available);
@@ -60,16 +70,17 @@ const InventoryDetails = () => {
       // Initialize selected products with default quantities
       const initialSelection = {};
       available.forEach((product) => {
-        const verified = orderVerified.find(
-          (v) => v.productId === product.productId,
+        // SUM ALL verified quantities for this product
+        const alreadyVerified = getTotalVerifiedForProduct(
+          orderVerified,
+          product.productId,
         );
-        const alreadyVerified = verified ? parseInt(verified.finalQty) || 0 : 0;
         const remaining = product.producedQuantity - alreadyVerified;
 
         initialSelection[product.productId] = {
           selected: false,
-          quantity: remaining,
-          maxQuantity: remaining,
+          quantity: remaining > 0 ? remaining : 0,
+          maxQuantity: remaining > 0 ? remaining : 0,
           alreadyVerified: alreadyVerified,
         };
       });
@@ -113,7 +124,7 @@ const InventoryDetails = () => {
   // Handle quantity change
   const handleQuantityChange = (productId, value) => {
     const quantity = parseInt(value) || 0;
-    const maxQuantity = selectedProducts[productId].maxQuantity;
+    const maxQuantity = selectedProducts[productId]?.maxQuantity || 0;
 
     if (quantity > maxQuantity) {
       alert(`Maximum quantity available: ${maxQuantity}`);
@@ -132,7 +143,7 @@ const InventoryDetails = () => {
   // Handle samples change
   const handleSamplesChange = (productId, value) => {
     const samples = parseInt(value) || 0;
-    const maxQuantity = selectedProducts[productId].maxQuantity;
+    const maxQuantity = selectedProducts[productId]?.maxQuantity || 0;
 
     if (samples > maxQuantity) {
       alert(`Cannot take more samples than available quantity: ${maxQuantity}`);
@@ -173,6 +184,8 @@ const InventoryDetails = () => {
 
   // Check if all products are selected
   const areAllSelected = () => {
+    const keys = Object.keys(selectedProducts);
+    if (keys.length === 0) return false;
     return Object.values(selectedProducts).every((p) => p.selected);
   };
 
@@ -198,12 +211,19 @@ const InventoryDetails = () => {
 
     // Validate quantities and remarks
     for (const [productId, data] of selected) {
+      const product = availableProducts.find(
+        (p) => String(p.productId) === String(productId),
+      );
+      const productName = product ? product.imlName : `Product ${productId}`;
+
       if (data.quantity <= 0) {
-        alert("Please enter valid quantities for all selected products");
+        alert(
+          `Please enter a valid quantity for "${productName}" (must be greater than 0)`,
+        );
         return;
       }
       if (!data.remarks || data.remarks.trim() === "") {
-        alert("Please enter remarks for all selected products");
+        alert(`Please enter remarks for "${productName}"`);
         return;
       }
     }
@@ -236,30 +256,49 @@ const InventoryDetails = () => {
         allVerified[order.id] = [];
       }
 
+      // ===== FIX: Use String comparison consistently =====
       // Create new entries for each selected product
-      const newVerifiedEntries = selected.map(([productId, data]) => {
-        const product = availableProducts.find(
-          (p) => p.productId === parseInt(productId),
-        );
+      const newVerifiedEntries = selected
+        .map(([productId, data]) => {
+          // Use String comparison to find the product
+          const product = availableProducts.find(
+            (p) => String(p.productId) === String(productId),
+          );
 
-        return {
-          verificationId: batchId, // Same ID for all products in this batch
-          productId: parseInt(productId),
-          imlName: product.imlName,
-          productCategory: product.productCategory,
-          size: product.size,
-          productionQty: product.producedQuantity,
-          finalQty: data.quantity, // This is only what's verified NOW
-          samplesTaken: data.samples || 0,
-          remarks: data.remarks,
-          date: currentDate,
-          time: currentTime,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          batchNumber: `BATCH-${Date.now().toString().slice(-6)}`, // Optional: human-readable batch ID
-          verificationSession: new Date().toLocaleString("en-IN"), // For grouping display
-        };
-      });
+          if (!product) {
+            console.error(
+              "Product not found for productId:",
+              productId,
+              "Available:",
+              availableProducts.map((p) => p.productId),
+            );
+            return null;
+          }
+
+          return {
+            verificationId: batchId,
+            productId: product.productId, // Keep original type
+            imlName: product.imlName,
+            productCategory: product.productCategory,
+            size: product.size,
+            productionQty: product.producedQuantity,
+            finalQty: data.quantity,
+            samplesTaken: data.samples || 0,
+            remarks: data.remarks,
+            date: currentDate,
+            time: currentTime,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            batchNumber: `BATCH-${Date.now().toString().slice(-6)}`,
+            verificationSession: new Date().toLocaleString("en-IN"),
+          };
+        })
+        .filter(Boolean);
+
+      if (newVerifiedEntries.length === 0) {
+        alert("No valid products found to verify. Please try again.");
+        return;
+      }
 
       // Add new entries to the history
       allVerified[order.id] = [...allVerified[order.id], ...newVerifiedEntries];
@@ -269,17 +308,23 @@ const InventoryDetails = () => {
         JSON.stringify(allVerified),
       );
 
-      // Prepare data for Sales Payment
-      const salesPaymentData = {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        contact: order.contact,
-        products: selected.map(([productId, data]) => {
+      // ===== FIX: Prepare data for Sales Payment with consistent type comparison =====
+      const salesPaymentProducts = selected
+        .map(([productId, data]) => {
           const product = availableProducts.find(
-            (p) => p.productId === parseInt(productId),
+            (p) => String(p.productId) === String(productId),
           );
+
+          if (!product) {
+            console.error(
+              "Product not found for sales payment, productId:",
+              productId,
+            );
+            return null;
+          }
+
           return {
-            productId: parseInt(productId),
+            productId: product.productId,
             imlName: product.imlName,
             productCategory: product.productCategory,
             size: product.size,
@@ -288,9 +333,16 @@ const InventoryDetails = () => {
             remarks: data.remarks,
             rate: 0,
             amount: 0,
-            verificationId: batchId, // Link to verification entry
+            verificationId: batchId,
           };
-        }),
+        })
+        .filter(Boolean);
+
+      const salesPaymentData = {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        contact: order.contact,
+        products: salesPaymentProducts,
         batchId: batchId,
         createdAt: timestamp,
         verificationDate: currentDate,
@@ -315,43 +367,20 @@ const InventoryDetails = () => {
         JSON.stringify(allSalesData),
       );
 
-      // Also save to pending for immediate use (optional)
+      // Also save to pending for immediate use
       localStorage.setItem(
         "pending_iml_sales_payment",
         JSON.stringify(salesPaymentData),
       );
 
-      alert("Products verified and sent to Sales Payment successfully!");
+      alert(
+        `${newVerifiedEntries.length} product(s) verified and sent to Sales Payment successfully!`,
+      );
 
-      // Reload the page to show updated data
+      // ===== FIX: Reload data properly after saving =====
+      // Re-read from localStorage to get the latest state
       loadAvailableProducts(order);
       loadVerifiedData(order.id);
-
-      // Reset selections
-      const resetSelection = {};
-      Object.keys(selectedProducts).forEach((productId) => {
-        const product = availableProducts.find(
-          (p) => p.productId === parseInt(productId),
-        );
-        if (product) {
-          const verified = allVerified[order.id].filter(
-            (v) => v.productId === parseInt(productId),
-          );
-          const totalVerified = verified.reduce(
-            (sum, v) => sum + parseInt(v.finalQty),
-            0,
-          );
-          const remaining = product.producedQuantity - totalVerified;
-
-          resetSelection[productId] = {
-            selected: false,
-            quantity: remaining > 0 ? remaining : 0,
-            maxQuantity: remaining > 0 ? remaining : 0,
-            alreadyVerified: totalVerified,
-          };
-        }
-      });
-      setSelectedProducts(resetSelection);
     } catch (error) {
       console.error("Error verifying and sending:", error);
       alert("An error occurred. Please try again.");
@@ -463,7 +492,7 @@ const InventoryDetails = () => {
             {verifiedData.length > 0 && (
               <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-[1.5vw]">
                 <h2 className="text-[1.2vw] font-semibold text-green-800 mb-[1vw]">
-                  ✓ Verification History 
+                  ✓ Verification History
                 </h2>
                 <div className="mb-[1vw]">
                   <p className="text-[0.85vw] text-gray-600">
@@ -509,7 +538,6 @@ const InventoryDetails = () => {
                     </thead>
                     <tbody>
                       {verifiedData.map((entry, idx) => {
-                        // Add a visual separator for different verification sessions
                         const isNewSession =
                           idx === 0 ||
                           verifiedData[idx - 1].verificationId !==
@@ -527,7 +555,6 @@ const InventoryDetails = () => {
                                 >
                                   🗓️ Verification Session: {entry.date}{" "}
                                   {entry.time}
-                                  
                                 </td>
                               </tr>
                             )}
@@ -676,7 +703,9 @@ const InventoryDetails = () => {
                               {product.producedQuantity.toLocaleString("en-IN")}
                             </td>
                             <td className="border border-gray-300 px-[1vw] py-[0.6vw] text-[0.85vw] font-semibold text-green-600">
-                              {selection?.alreadyVerified || 0}
+                              {(
+                                selection?.alreadyVerified || 0
+                              ).toLocaleString("en-IN")}
                             </td>
                             <td className="border border-gray-300 px-[1vw] py-[0.6vw]">
                               <input
