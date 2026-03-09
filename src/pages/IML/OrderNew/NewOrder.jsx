@@ -1343,8 +1343,51 @@ useEffect(() => {
     }, 0);
   };
 
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const [pendingNavAction, setPendingNavAction] = useState(null); // 'back' | 'cancel'
+
+  const hasUnsavedChanges = () => {
+    const isContactFilled =
+      contact.company.trim() !== "" ||
+      contact.contactName.trim() !== "" ||
+      contact.phone.trim() !== "";
+
+    const isProductFilled = products.some(
+      (p) =>
+        p.productName !== "" ||
+        p.size !== "" ||
+        p.imlName !== "" ||
+        p.lidLabelQty !== "" ||
+        p.tubLabelQty !== "" ||
+        p.lidDesignFile !== null ||
+        p.tubDesignFile !== null,
+    );
+
+    const isPaymentFilled =
+      payment.totalEstimated !== "" || payment.remarks !== "";
+
+    return isContactFilled || isProductFilled || isPaymentFilled;
+  };
+
   const handleBack = () => {
-    if (onBack) onBack();
+    if (hasUnsavedChanges()) {
+      setPendingNavAction("back");
+      setShowUnsavedModal(true);
+    } else {
+      if (onBack) onBack();
+    }
+  };
+
+  const handleUnsavedConfirm = () => {
+    setShowUnsavedModal(false);
+    if (pendingNavAction === "back" && onBack) onBack();
+    else if (pendingNavAction === "cancel" && onCancel) onCancel();
+    setPendingNavAction(null);
+  };
+
+  const handleUnsavedDismiss = () => {
+    setShowUnsavedModal(false);
+    setPendingNavAction(null);
   };
 
   const [isManualTotal, setIsManualTotal] = useState(false);
@@ -2608,6 +2651,14 @@ useEffect(() => {
                                               >
                                                 Preview Full
                                               </button>
+                                              <button
+                                                onClick={() => {
+                                                  updateProduct(product.id, "lidSelectedOldDesign", null);
+                                                }}
+                                                className="px-[1vw] py-[0.4vw] ml-[1vw] cursor-pointer bg-red-600 text-white rounded-[0.4vw] hover:bg-red-700 font-medium text-[0.75vw] transition-all duration-200"
+                                              >
+                                                Remove Design
+                                              </button>
                                             </div>
                                           );
                                         })()}
@@ -2783,6 +2834,14 @@ useEffect(() => {
                                                     className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
                                                   >
                                                     Preview Full
+                                                  </button>
+                                                  <button
+                                                    onClick={() => {
+                                                      updateProduct(product.id, "tubSelectedOldDesign", null);
+                                                    }}
+                                                    className="px-[1vw] py-[0.4vw] ml-[1vw] cursor-pointer bg-red-600 text-white rounded-[0.4vw] hover:bg-red-700 font-medium text-[0.75vw] transition-all duration-200"
+                                                  >
+                                                    Remove Design
                                                   </button>
                                                 </div>
                                               );
@@ -2998,6 +3057,16 @@ useEffect(() => {
                                                 />
                                               </svg>
                                               Preview Full
+                                            </button>
+
+                                            <button
+                                              onClick={() => {
+                                                updateProduct(product.id, "lidSelectedOldDesign", null);
+                                              }}
+                                              className="px-[1vw] py-[0.4vw] cursor-pointer bg-red-600 text-white rounded-[0.4vw] hover:bg-red-700 font-medium text-[0.85vw] transition-all duration-200 shadow-sm hover:shadow-md absolute right-[2vw] top-[4vw]"
+                                            >
+                                              
+                                              Remove design
                                             </button>
                                           </div>
                                         );
@@ -3540,8 +3609,11 @@ useEffect(() => {
           <button
             className="px-[1.5vw] py-[0.65vw] border-2 border-gray-300 text-gray-700 bg-white rounded-[0.5vw] text-[0.85vw] font-medium cursor-pointer transition-all duration-200 hover:bg-gray-50"
             onClick={() => {
-              if (onCancel) {
-                onCancel();
+              if (hasUnsavedChanges()) {
+                setPendingNavAction("cancel");
+                setShowUnsavedModal(true);
+              } else {
+                if (onCancel) onCancel();
               }
             }}
           >
@@ -3556,6 +3628,43 @@ useEffect(() => {
           </button>
         </div>
       </div>
+      {/* Unsaved Changes Modal */}
+      {showUnsavedModal && (
+        <div className="fixed inset-0 bg-[#000000ba] z-[999] flex items-center justify-center p-[1vw]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-[28vw] w-full overflow-hidden">
+            <div className="flex items-center gap-3 px-[1.5vw] py-[1.25vw] border-b border-gray-200 bg-amber-50">
+              <div className="flex-shrink-0 w-[2.5vw] h-[2.5vw] rounded-full bg-amber-100 flex items-center justify-center">
+                <svg className="w-[1.4vw] h-[1.4vw] text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <h3 className="text-[1.05vw] font-bold text-gray-800">Unsaved Changes</h3>
+            </div>
+            <div className="px-[1.5vw] py-[1.25vw]">
+              <p className="text-[0.9vw] text-gray-600 leading-relaxed">
+                You have unsaved changes in this form. If you go back now, all your entered data will be lost.
+              </p>
+              <p className="text-[0.85vw] text-gray-500 mt-[0.5vw]">
+                Are you sure you want to leave without saving?
+              </p>
+            </div>
+            <div className="flex justify-end gap-[0.75vw] px-[1.5vw] py-[1vw] bg-gray-50 border-t border-gray-200">
+              <button
+                onClick={handleUnsavedDismiss}
+                className="px-[1.25vw] py-[0.55vw] text-[0.85vw] font-medium border-2 border-gray-300 text-gray-700 bg-white rounded-[0.5vw] cursor-pointer hover:bg-gray-100 transition-all"
+              >
+                Cancel — Keep Editing
+              </button>
+              <button
+                onClick={handleUnsavedConfirm}
+                className="px-[1.25vw] py-[0.55vw] text-[0.85vw] font-semibold bg-red-500 text-white rounded-[0.5vw] cursor-pointer hover:bg-red-600 transition-all shadow-md"
+              >
+                Yes, Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <PreviewModal />
       <PaymentModal
         showPaymentModal={showPaymentModal}
