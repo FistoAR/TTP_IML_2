@@ -66,6 +66,8 @@ const PurchaseManagement = () => {
           return false;
         }
 
+        if (order.productDeleted === true) return false;
+
         return order.products.some(
           (product) => product.moveToPurchase === true
         );

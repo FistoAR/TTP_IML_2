@@ -1,4 +1,5 @@
 // Auto-extracted from OrdersManagement.jsx
+import { useState } from "react";
 
 const STORAGE_KEY = "imlorders";
 
@@ -6,46 +7,76 @@ const STORAGE_KEY = "imlorders";
 export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, orders, setAllInvoicesModal, setAllInvoicesTab, setOrders }) {
   if (!allInvoicesModal.isOpen) return null;
 
-  // Filter orders for Delete Requests (productDeleted: true, NOT confirmed yet)
-  const deleteRequestOrders = orders.filter(o => o.productDeleted && !o.orderConfirmDelete);
+  const [invoiceModal, setInvoiceModal] = useState({ isOpen: false, order: null });
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceValue, setInvoiceValue] = useState("");
+  const [refundDate, setRefundDate] = useState("");
+  const [refundRefNo, setRefundRefNo] = useState("");
 
-  // Filter orders for Delete History (orderConfirmDelete: true)
-  const deleteHistoryOrders = orders.filter(o => o.orderConfirmDelete);
-
-  // Group by company
-  const groupByCompany = (ordersList) => {
-    return ordersList.reduce((acc, order) => {
-      const companyName = order.contact?.company || 'Unknown Company';
-      if (!acc[companyName]) {
-        acc[companyName] = [];
-      }
-      acc[companyName].push(order);
-      return acc;
-    }, {});
+  // Calculate total payments for an order
+  const getTotalPayments = (order) => {
+    if (!order.paymentRecords || order.paymentRecords.length === 0) return 0;
+    return order.paymentRecords
+      .filter(r => r.paymentType === "advance")
+      .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
   };
 
-  const deleteRequestsByCompany = groupByCompany(deleteRequestOrders);
-  const deleteHistoryByCompany = groupByCompany(deleteHistoryOrders);
+  const totalPayments = invoiceModal.order ? getTotalPayments(invoiceModal.order) : 0;
+  const invoiceValueNum = parseFloat(invoiceValue) || 0;
+  const needsRefund = invoiceModal.isOpen && invoiceValue !== "" && invoiceValueNum < totalPayments;
 
-  // Accept delete request - sets orderConfirmDelete: true
-  const handleAcceptDelete = (order) => {
-    const invoiceNumber = prompt(`Enter Invoice Number for deleted order:\n${order.orderNumber || order.id}`);
-    if (invoiceNumber && invoiceNumber.trim()) {
-      const updatedOrders = orders.map(o =>
-        o.id === order.id
-          ? {
-            ...o,
-            orderConfirmDelete: true,
-            deletionConfirmedAt: new Date().toISOString(),
-            deletionInvoiceNumber: invoiceNumber.trim()
-          }
-          : o
-      );
-      setOrders(updatedOrders);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-      window.dispatchEvent(new Event('ordersUpdated'));
-      alert('✅ Delete request accepted! Order moved to Delete History.');
+  const openInvoiceModal = (order) => {
+    setInvoiceModal({ isOpen: true, order });
+    setInvoiceNumber("");
+    setInvoiceValue("");
+    setRefundDate("");
+    setRefundRefNo("");
+  };
+
+  const handleConfirmInvoice = () => {
+    if (!invoiceNumber.trim()) {
+      alert("Please enter an invoice number.");
+      return;
     }
+    if (!invoiceValue.trim() || isNaN(parseFloat(invoiceValue))) {
+      alert("Please enter a valid invoice value.");
+      return;
+    }
+    if (needsRefund) {
+      if (!refundDate) {
+        alert("Please enter the refund date.");
+        return;
+      }
+      if (!refundRefNo.trim()) {
+        alert("Please enter the refund reference number.");
+        return;
+      }
+    }
+
+    const order = invoiceModal.order;
+    const updatedOrder = {
+      ...order,
+      orderConfirmDelete: true,
+      deletionConfirmedAt: new Date().toISOString(),
+      deletionInvoiceNumber: invoiceNumber.trim(),
+      deletionInvoiceValue: parseFloat(invoiceValue),
+    };
+
+    if (needsRefund) {
+      updatedOrder.invoiceRefundDetails = {
+        refundDate,
+        refundRefNo: refundRefNo.trim(),
+        refundAmount: totalPayments - invoiceValueNum,
+        recordedAt: new Date().toISOString(),
+      };
+    }
+
+    const updatedOrders = orders.map(o => o.id === order.id ? updatedOrder : o);
+    setOrders(updatedOrders);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new Event('ordersUpdated'));
+    setInvoiceModal({ isOpen: false, order: null });
+    alert('✅ Delete request accepted! Order moved to Delete History.');
   };
 
   // Reject delete request - sets productDeleted: false
@@ -66,6 +97,27 @@ export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, ord
       alert('✅ Delete request rejected! Order restored to active state.');
     }
   };
+
+  // Filter orders for Delete Requests (productDeleted: true, NOT confirmed yet)
+  const deleteRequestOrders = orders.filter(o => o.productDeleted && !o.orderConfirmDelete);
+
+  // Filter orders for Delete History (orderConfirmDelete: true)
+  const deleteHistoryOrders = orders.filter(o => o.orderConfirmDelete);
+
+  // Group by company
+  const groupByCompany = (ordersList) => {
+    return ordersList.reduce((acc, order) => {
+      const companyName = order.contact?.company || 'Unknown Company';
+      if (!acc[companyName]) acc[companyName] = [];
+      acc[companyName].push(order);
+      return acc;
+    }, {});
+  };
+
+  const deleteRequestsByCompany = groupByCompany(deleteRequestOrders);
+  const deleteHistoryByCompany = groupByCompany(deleteHistoryOrders);
+
+  const handleAcceptDelete = (order) => openInvoiceModal(order);
 
   // Product Table Component
   const ProductTable = ({ products }) => (
@@ -146,6 +198,93 @@ export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, ord
 
   return (
     <>
+      {/* Custom Invoice Modal */}
+      {invoiceModal.isOpen && (
+        <div className="fixed inset-0 bg-black/70 z-[50020] flex items-center justify-center p-[1.5vw]">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-[1.5vw] py-[1vw] flex items-center justify-between">
+              <div>
+                <h2 className="text-[1.15vw] font-bold text-white">✅ Accept & Generate Invoice</h2>
+                <p className="text-[0.8vw] text-green-100 mt-[0.2vw]">Order: <strong>{invoiceModal.order?.orderNumber || invoiceModal.order?.id}</strong></p>
+              </div>
+              <button onClick={() => setInvoiceModal({ isOpen: false, order: null })} className="text-white hover:text-green-200 text-[1.8vw] font-bold cursor-pointer leading-none">×</button>
+            </div>
+
+            <div className="px-[1.5vw] py-[1.25vw] space-y-[1vw]">
+              <div className="grid grid-cols-2 gap-[1vw]">
+                <div>
+                  <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">Invoice Number <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={e => setInvoiceNumber(e.target.value)}
+                    placeholder="Enter invoice number"
+                    className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">Invoice Value (₹) <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    value={invoiceValue}
+                    onChange={e => setInvoiceValue(e.target.value)}
+                    placeholder="Enter invoice value"
+                    className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                </div>
+              </div>
+
+              {invoiceModal.order && totalPayments > 0 && (
+                <div className="text-[0.8vw] text-gray-500 bg-gray-50 px-[1vw] py-[0.5vw] rounded-lg border border-gray-200">
+                  Total payments received: <strong className="text-gray-700">₹{totalPayments.toLocaleString()}</strong>
+                </div>
+              )}
+
+              {/* Refund details - shown only when invoice < total payments */}
+              {needsRefund && (
+                <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-[1vw] space-y-[0.75vw]">
+                  <p className="text-[0.85vw] font-bold text-amber-800">
+                    ⚠️ Invoice value (₹{invoiceValueNum.toLocaleString()}) is less than total payments (₹{totalPayments.toLocaleString()}). Refund of ₹{(totalPayments - invoiceValueNum).toLocaleString()} required — please fill in refund details.
+                  </p>
+                  <div className="grid grid-cols-2 gap-[1vw]">
+                    <div>
+                      <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">Refund Date <span className="text-red-500">*</span></label>
+                      <input
+                        type="date"
+                        value={refundDate}
+                        onChange={e => setRefundDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">Reference Number <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={refundRefNo}
+                        onChange={e => setRefundRefNo(e.target.value)}
+                        placeholder="Enter reference number"
+                        className="w-full border border-gray-300 rounded-lg px-[0.75vw] py-[0.5vw] text-[0.85vw] focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-[0.75vw] px-[1.5vw] py-[1vw] border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setInvoiceModal({ isOpen: false, order: null })}
+                className="px-[1.25vw] py-[0.5vw] text-[0.85vw] bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium cursor-pointer"
+              >Cancel</button>
+              <button
+                onClick={handleConfirmInvoice}
+                className="px-[1.25vw] py-[0.5vw] text-[0.85vw] bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold cursor-pointer shadow-md"
+              >Confirm & Generate Invoice</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed inset-0 bg-black/60 z-[50010] flex items-center justify-center p-[1.5vw]">
         <div className="bg-white rounded-[1.8vw] max-w-[92vw] w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
 
@@ -307,7 +446,7 @@ export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, ord
                                   <span><strong>Confirmed:</strong> {order.deletionConfirmedAt ? new Date(order.deletionConfirmedAt).toLocaleDateString() : 'N/A'}</span>
                                 </div>
 
-                                {/* Invoice Info */}
+                            {/* Invoice Info */}
                                 {order.deletionInvoiceNumber && (
                                   <div className="mt-[1vw] bg-green-100 border-2 border-green-400 rounded-lg p-[1vw]">
                                     <div className="flex items-center gap-[1vw]">
@@ -318,10 +457,27 @@ export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, ord
                                         <p className="text-[1vw] font-bold text-green-800">
                                           Invoice Generated: {order.deletionInvoiceNumber}
                                         </p>
+                                        {order.deletionInvoiceValue != null && (
+                                          <p className="text-[.85vw] text-green-700">
+                                            Invoice Value: ₹{Number(order.deletionInvoiceValue).toLocaleString()}
+                                          </p>
+                                        )}
                                         <p className="text-[.85vw] text-green-700">
                                           Deletion confirmed and processed
                                         </p>
                                       </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Invoice Refund Details - shown if invoice was less than payments */}
+                                {order.invoiceRefundDetails && (
+                                  <div className="mt-[0.75vw] bg-amber-50 border-2 border-amber-300 rounded-lg p-[1vw]">
+                                    <h5 className="text-[0.9vw] font-bold text-amber-800 mb-[0.4vw]">🔄 Invoice Refund Details</h5>
+                                    <div className="grid grid-cols-3 gap-x-[1.5vw] gap-y-[0.2vw] text-[.85vw] text-gray-700">
+                                      <span><strong>Refund Amount:</strong> ₹{Number(order.invoiceRefundDetails.refundAmount || 0).toLocaleString()}</span>
+                                      <span><strong>Refund Date:</strong> {order.invoiceRefundDetails.refundDate || 'N/A'}</span>
+                                      <span><strong>Reference No:</strong> {order.invoiceRefundDetails.refundRefNo || 'N/A'}</span>
                                     </div>
                                   </div>
                                 )}

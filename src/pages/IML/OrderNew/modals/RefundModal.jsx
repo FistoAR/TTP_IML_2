@@ -33,10 +33,7 @@ export default function RefundModal({ orders, refundModal, setOrders, setRefundM
     /\.pdf$/i.test(localDocName);
 
   const handleSubmit = () => {
-    if (!deletionReason.trim()) {
-      alert("Please enter the reason for deletion.");
-      return;
-    }
+    
     if (!refundDate) {
       alert("Please enter the refund date.");
       return;
@@ -45,10 +42,7 @@ export default function RefundModal({ orders, refundModal, setOrders, setRefundM
       alert("Please enter the reference number.");
       return;
     }
-    if (!localDoc) {
-      alert("Please upload a payment/refund document.");
-      return;
-    }
+    // remarks and file upload are optional
     const updatedOrders = orders.map((o) =>
       o.id === refundModal.orderId
         ? {
@@ -149,8 +143,7 @@ export default function RefundModal({ orders, refundModal, setOrders, setRefundM
             {/* Reason for Deletion */}
             <div>
               <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">
-                Reason for Order Deletion <span className="text-red-500">*</span>
-                <span className="ml-2 text-[0.75vw] text-gray-400 font-normal">(stored locally)</span>
+                Reason for Order Deletion
               </label>
               <textarea
                 value={deletionReason}
@@ -164,7 +157,7 @@ export default function RefundModal({ orders, refundModal, setOrders, setRefundM
             {/* Document Upload */}
             <div>
               <label className="block text-[0.85vw] font-semibold text-gray-700 mb-[0.4vw]">
-                Payment/Refund Document <span className="text-red-500">*</span>
+                Payment/Refund Document <span className="text-gray-400 font-normal text-[0.75vw]">(optional)</span>
               </label>
               <input
                 type="file"
@@ -219,9 +212,9 @@ export default function RefundModal({ orders, refundModal, setOrders, setRefundM
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!deletionReason.trim() || !refundDate || !refundRefNo.trim() || !localDoc}
+              disabled={!refundDate || !refundRefNo.trim()}
               className={`px-[1.25vw] py-[0.5vw] text-[0.85vw] rounded-lg font-bold transition-all cursor-pointer ${
-                deletionReason.trim() && refundDate && refundRefNo.trim() && localDoc
+                refundDate && refundRefNo.trim()
                   ? "bg-red-600 text-white hover:bg-red-700 shadow-md"
                   : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}

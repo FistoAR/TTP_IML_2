@@ -687,34 +687,47 @@ useEffect(() => {
     return false;
   };
 
-  // NEW: Find matching products with same core details + IML Name
-  // Only return products that appear BEFORE the current product (lower index)
+  // Find matching products with same combo + has artwork + designSharedMail=false
+  // Bidirectional: any other product in the list (not just earlier ones)
   const findMatchingProducts = (currentProduct, currentIndex) => {
     if (!currentProduct.productName || !currentProduct.size || !currentProduct.imlType || !currentProduct.imlName) {
       return [];
     }
-    
-    return products.filter((p, idx) => 
-      idx < currentIndex && // Only products with lower index (earlier in the list)
+    return products.filter((p, idx) =>
+      idx !== currentIndex && // not itself
       p.productName === currentProduct.productName &&
       p.size === currentProduct.size &&
       p.imlType === currentProduct.imlType &&
-      p.imlName === currentProduct.imlName
+      p.imlName === currentProduct.imlName &&
+      !p.designSharedMail && // design NOT shared in mail
+      (!!p.lidDesignFile || !!p.tubDesignFile || !!p.lidSelectedOldDesign || !!p.tubSelectedOldDesign) // has artwork
     );
   };
 
+  // Helper: get a design fingerprint to deduplicate unique designs
+  const getDesignFingerprint = (p) => {
+    return [
+      p.designType || "",
+      p.lidDesignFile ? (p.lidDesignFile.name || "file") : "",
+      p.tubDesignFile ? (p.tubDesignFile.name || "file") : "",
+      p.lidSelectedOldDesign || "",
+      p.tubSelectedOldDesign || "",
+    ].join("|");
+  };
+
   // NEW: Handle linked design toggle
-  const handleLinkedDesignToggle = (productId, checked) => {
+  const handleLinkedDesignToggle = (productId, checked, sourceProductId) => {
     setProducts(products.map((p, idx) => {
       if (p.id === productId) {
         if (checked) {
-          // Find the first matching product that appears BEFORE this one
+          // Use specific sourceProductId if given; otherwise fall back to first match
           const matchingProducts = findMatchingProducts(p, idx);
-          if (matchingProducts.length > 0) {
-            const sourceProduct = matchingProducts[0];
+          const sourceProduct = sourceProductId
+            ? products.find(mp => mp.id === sourceProductId)
+            : (matchingProducts.length > 0 ? matchingProducts[0] : null);
+
+          if (sourceProduct) {
             const sourceIndex = products.findIndex(prod => prod.id === sourceProduct.id);
-            
-            // Copy design from source product
             return {
               ...p,
               useLinkedDesign: true,
@@ -722,7 +735,6 @@ useEffect(() => {
                 productId: sourceProduct.id,
                 productIndex: sourceIndex + 1
               },
-              // Copy design fields
               designType: sourceProduct.designType,
               lidDesignFile: sourceProduct.lidDesignFile,
               lidSelectedOldDesign: sourceProduct.lidSelectedOldDesign,
@@ -736,21 +748,17 @@ useEffect(() => {
             };
           }
         }
-        
-        // ✅ UNLINK - Clear ALL design fields back to defaults
+
+        // UNLINK - Clear ALL design fields back to defaults
         return {
           ...p,
           useLinkedDesign: false,
           linkedDesignSource: null,
-          // Clear all design files
           lidDesignFile: null,
           tubDesignFile: null,
-          // Clear existing design selections
           lidSelectedOldDesign: null,
           tubSelectedOldDesign: null,
-          // Reset design type back to "new"
           designType: "new",
-          // Keep status as approved but clear the date to today
           designStatus: "approved",
           orderStatus: "Artwork Approved",
           approvedDate: getTodayDate(),
@@ -1765,20 +1773,23 @@ useEffect(() => {
             // Only find matching products that appear BEFORE this one
             const matchingProducts = findMatchingProducts(product, index);
             const hasMatchingProducts = matchingProducts.length > 0;
-            
-            // Check if design is approved and designSharedMail is false (showing approve date)
-            // Also ensure the source matching product actually has artwork uploaded
-            const sourceProduct = matchingProducts.length > 0 ? matchingProducts[0] : null;
-            const sourceHasArtwork = sourceProduct && (
-              !!sourceProduct.lidDesignFile ||
-              !!sourceProduct.tubDesignFile ||
-              !!sourceProduct.lidSelectedOldDesign ||
-              !!sourceProduct.tubSelectedOldDesign
-            );
-            const showLinkedDesignOption = hasMatchingProducts && 
-              product.designStatus === "approved" && 
-              !product.designSharedMail &&
-              sourceHasArtwork;
+
+            // Current product has no artwork yet (so it can borrow from another)
+            const currentHasArtwork = !!(product.lidDesignFile || product.tubDesignFile || product.lidSelectedOldDesign || product.tubSelectedOldDesign);
+
+            // Show linked design checkboxes only when current has NO artwork and there are matches with artwork
+            const showLinkedDesignOption = hasMatchingProducts && !currentHasArtwork && !product.useLinkedDesign;
+
+            // Get unique design sources (deduplicated by fingerprint)
+            const uniqueDesignSources = [];
+            const seenFingerprints = new Set();
+            matchingProducts.forEach(mp => {
+              const fp = getDesignFingerprint(mp);
+              if (!seenFingerprints.has(fp)) {
+                seenFingerprints.add(fp);
+                uniqueDesignSources.push(mp);
+              }
+            });
             
             return (
             <div key={product.id} className="mt-[1vw]">
@@ -2163,9 +2174,33 @@ useEffect(() => {
 
                           {/* TUB Quantities */}
                           <div className="mt-[1vw]">
-                            <h4 className="text-[0.9vw] font-semibold text-blue-800 mb-[0.75vw]">
-                              TUB Quantities
-                            </h4>
+                            <div className="flex items-center justify-between mb-[0.75vw]">
+    <h4 className="text-[0.9vw] font-semibold text-blue-800">
+      TUB Quantities
+    </h4>
+    {/* Apply same as LID button — only show if LID qty fields have values */}
+    {(product.lidLabelQty || product.lidProductionQty) && (
+      <button
+        type="button"
+        onClick={() => {
+  setProducts(prev => prev.map(p =>
+    p.id === product.id
+      ? {
+          ...p,
+          ...(product.lidLabelQty && { tubLabelQty: product.lidLabelQty }),
+          ...(product.lidProductionQty && { tubProductionQty: product.lidProductionQty }),
+          ...(product.lidStock && { tubStock: product.lidStock }),
+        }
+      : p
+  ));
+}}
+        className="text-[0.75vw] font-semibold text-blue-600 border border-blue-400 bg-blue-50 hover:bg-blue-100 px-[0.75vw] py-[0.3vw] rounded-lg cursor-pointer transition-all"
+      >
+        ⟳ Apply same quantity as LID
+      </button>
+    )}
+  </div>
+                            
                             <div className="grid grid-cols-3 gap-[1.5vw]">
                               <Input
                                 label="Labels Order Qty (TUB)"
@@ -2341,23 +2376,33 @@ useEffect(() => {
                         </label>
                       )}
 
-                      {/* NEW: Link to existing product checkbox - only show if design is approved and not shared in mail */}
-                      {showLinkedDesignOption && !product.useLinkedDesign && (
-                        <div className="mb-[1vw] mt-[1.5vw] p-[0.8vw] bg-blue-50 border border-blue-300 rounded-lg">
-                          <label className="flex items-center gap-[0.6vw] cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={product.useLinkedDesign || false}
-                              onChange={(e) => handleLinkedDesignToggle(product.id, e.target.checked)}
-                              className="w-[1.1vw] h-[1.1vw] text-blue-600"
-                            />
-                            <span className="text-[0.9vw] font-medium text-blue-800">
-                              Use same design as Product #{products.findIndex(p => p.id === matchingProducts[0].id) + 1}
-                            </span>
-                          </label>
-                          <p className="text-[0.75vw] text-blue-600 mt-[0.3vw] ml-[1.7vw]">
-                            This will link to: {matchingProducts[0].productName} - {matchingProducts[0].size} ({matchingProducts[0].imlType})
-                          </p>
+                      {/* NEW: Link to existing product checkbox - show one per unique design */}
+                      {showLinkedDesignOption && (
+                        <div className="mb-[1vw] mt-[1.5vw] space-y-[0.6vw]">
+                          {uniqueDesignSources.map((sourceProduct) => {
+                            const srcIndex = products.findIndex(p => p.id === sourceProduct.id) + 1;
+                            const designLabel = sourceProduct.designType === "existing"
+                              ? `Existing Design (${[sourceProduct.lidSelectedOldDesign, sourceProduct.tubSelectedOldDesign].filter(Boolean).join(", ") || "selected"})`
+                              : `Uploaded Design (${[sourceProduct.lidDesignFile?.name, sourceProduct.tubDesignFile?.name].filter(Boolean).join(", ") || "file"})`;
+                            return (
+                              <div key={sourceProduct.id} className="p-[0.8vw] bg-blue-50 border border-blue-300 rounded-lg">
+                                <label className="flex items-center gap-[0.6vw] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={false}
+                                    onChange={(e) => e.target.checked && handleLinkedDesignToggle(product.id, true, sourceProduct.id)}
+                                    className="w-[1.1vw] h-[1.1vw] text-blue-600"
+                                  />
+                                  <span className="text-[0.9vw] font-medium text-blue-800">
+                                    Use same design as Product #{srcIndex}
+                                  </span>
+                                </label>
+                                <p className="text-[0.75vw] text-blue-600 mt-[0.3vw] ml-[1.7vw]">
+                                  {sourceProduct.productName} - {sourceProduct.size} ({sourceProduct.imlType}) · {designLabel}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 

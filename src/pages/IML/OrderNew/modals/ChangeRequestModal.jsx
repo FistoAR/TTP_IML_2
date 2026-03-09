@@ -111,6 +111,28 @@ const handleLinkedDesignToggle = (checked) => {
   }
 };
 
+const getDesignFingerprint = (p) => {
+  return [
+    p.designType || "",
+    p.lidDesignFile ? (p.lidDesignFile.name || "file") : "",
+    p.tubDesignFile ? (p.tubDesignFile.name || "file") : "",
+    p.lidSelectedOldDesign || "",
+    p.tubSelectedOldDesign || "",
+  ].join("|");
+};
+
+// Deduplicated unique design sources
+const uniqueDesignSources = [];
+const seenFingerprints = new Set();
+matchingProducts.forEach(mp => {
+  const fp = getDesignFingerprint(mp);
+  if (!seenFingerprints.has(fp)) {
+    seenFingerprints.add(fp);
+    uniqueDesignSources.push(mp);
+  }
+});
+
+
 
 const updateProductWithDesignStatus = useCallback((id, field, value) => {
   setLocalProduct((prev) => {
@@ -405,6 +427,10 @@ useEffect(() => {
 ]);
 
 const isEditMode = sessionStorage.getItem("isEditMode") === "true";
+const isOrderPending = product.orderStatus === "Order Pending";
+
+// Track if "Save" was clicked while orderStatus is still "Order Pending"
+const [pendingSaved, setPendingSaved] = useState(false);
 
 return (
   <div className="fixed inset-0 bg-[#000000b3] z-[50000] flex items-center justify-center p-4">
@@ -415,7 +441,14 @@ return (
           {isEditMode ? "Edit ": "Change Request "}- {product.productName} {product.size}
         </h2>
         <button
-          onClick={handleCloseChangeRequest}
+          onClick={() => {
+            if (pendingSaved) {
+              // Do not update orderStatus - just close without submitting
+              handleCloseChangeRequest(true); // pass flag to skip status update
+            } else {
+              handleCloseChangeRequest();
+            }
+          }}
           className="text-gray-500 hover:text-gray-800 text-[2vw] font-bold cursor-pointer"
         >
           ×
@@ -722,24 +755,57 @@ return (
           )}
 
           {/* NEW: Link to existing product checkbox - only show if design is approved and not shared in mail */}
-          {showLinkedDesignOption && !localProduct.useLinkedDesign && (
-            <div className="mb-[1vw] mt-[1.5vw] p-[0.8vw] bg-blue-50 border border-blue-300 rounded-lg">
-              <label className="flex items-center gap-[0.6vw] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localProduct.useLinkedDesign || false}
-                  onChange={(e) => handleLinkedDesignToggle(e.target.checked)}
-                  className="w-[1.1vw] h-[1.1vw] text-blue-600"
-                />
-                <span className="text-[0.9vw] font-medium text-blue-800">
-                  Use same design as Product #{modalOrder.products.findIndex(p => p.id === matchingProducts[0].id) + 1}
-                </span>
-              </label>
-              <p className="text-[0.75vw] text-blue-600 mt-[0.3vw] ml-[1.7vw]">
-                This will link to: {matchingProducts[0].productName} - {matchingProducts[0].size} ({matchingProducts[0].imlType})
-              </p>
-            </div>
-          )}
+{showLinkedDesignOption && !localProduct.useLinkedDesign && (
+  <div className="mb-[1vw] mt-[1.5vw] space-y-[0.6vw]">
+    {uniqueDesignSources.map((sourceProduct) => {
+      const srcIndex = modalOrder.products.findIndex(p => p.id === sourceProduct.id) + 1;
+      const designLabel = sourceProduct.designType === "existing"
+        ? `Existing Design (${[sourceProduct.lidSelectedOldDesign, sourceProduct.tubSelectedOldDesign].filter(Boolean).join(", ") || "selected"})`
+        : `Uploaded Design (${[sourceProduct.lidDesignFile?.name, sourceProduct.tubDesignFile?.name].filter(Boolean).join(", ") || "file"})`;
+      return (
+        <div key={sourceProduct.id} className="p-[0.8vw] bg-blue-50 border border-blue-300 rounded-lg">
+          <label className="flex items-center gap-[0.6vw] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={false}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  // Link to this specific source product
+                  const sourceIndex = modalOrder.products.findIndex(p => p.id === sourceProduct.id);
+                  setLocalProduct(prev => ({
+                    ...prev,
+                    useLinkedDesign: true,
+                    linkedDesignSource: {
+                      productId: sourceProduct.id,
+                      productIndex: sourceIndex + 1,
+                    },
+                    designType: sourceProduct.designType,
+                    lidDesignFile: sourceProduct.lidDesignFile,
+                    lidSelectedOldDesign: sourceProduct.lidSelectedOldDesign,
+                    tubDesignFile: sourceProduct.tubDesignFile,
+                    tubSelectedOldDesign: sourceProduct.tubSelectedOldDesign,
+                    designStatus: sourceProduct.designStatus,
+                    orderStatus: sourceProduct.orderStatus,
+                    approvedDate: sourceProduct.approvedDate,
+                    designSharedMail: sourceProduct.designSharedMail,
+                    singleImlDesign: sourceProduct.singleImlDesign,
+                  }));
+                }
+              }}
+              className="w-[1.1vw] h-[1.1vw] text-blue-600"
+            />
+            <span className="text-[0.9vw] font-medium text-blue-800">
+              Use same design as Product #{srcIndex}
+            </span>
+          </label>
+          <p className="text-[0.75vw] text-blue-600 mt-[0.3vw] ml-[1.7vw]">
+            {sourceProduct.productName} - {sourceProduct.size} ({sourceProduct.imlType}) · {designLabel}
+          </p>
+        </div>
+      );
+    })}
+  </div>
+)}
 
           {/* Show linked design info if enabled */}
           {localProduct.useLinkedDesign && localProduct.linkedDesignSource && (
@@ -918,19 +984,29 @@ return (
                                       />
                                     )}
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      setPreviewModal({
-                                        isOpen: true,
-                                        type: selectedFile.type,
-                                        path: selectedFile.path,
-                                        name: selectedFile.name,
-                                      });
-                                    }}
-                                    className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded-[0.4vw] hover:bg-blue-700 font-medium text-[0.75vw] transition-all duration-200"
-                                  >
-                                    Preview Full
-                                  </button>
+                                  <div className="flex justify-center gap-[0.5vw] mt-[0.3vw]">
+                                    <button
+                                      onClick={() => {
+                                        setPreviewModal({
+                                          isOpen: true,
+                                          type: selectedFile.type,
+                                          path: selectedFile.path,
+                                          name: selectedFile.name,
+                                        });
+                                      }}
+                                      className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded-[0.4vw] hover:bg-blue-700 font-medium text-[0.75vw] transition-all duration-200"
+                                    >
+                                      Preview Full
+                                    </button>
+                                    {!localProduct.useLinkedDesign && (
+                                      <button
+                                        onClick={() => updateLocalField("lidSelectedOldDesign", null)}
+                                        className="px-[1vw] py-[0.4vw] cursor-pointer bg-red-500 text-white rounded-[0.4vw] hover:bg-red-600 font-medium text-[0.75vw] transition-all duration-200"
+                                      >
+                                        ✕ Remove
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })()}
@@ -1087,19 +1163,29 @@ return (
                                         />
                                       )}
                                     </div>
-                                    <button
-                                      onClick={() => {
-                                        setPreviewModal({
-                                          isOpen: true,
-                                          type: selectedFile.type,
-                                          path: selectedFile.path,
-                                          name: selectedFile.name,
-                                        });
-                                      }}
-                                      className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
-                                    >
-                                      Preview Full
-                                    </button>
+                                    <div className="flex justify-center gap-[0.5vw] mt-[0.3vw]">
+                                      <button
+                                        onClick={() => {
+                                          setPreviewModal({
+                                            isOpen: true,
+                                            type: selectedFile.type,
+                                            path: selectedFile.path,
+                                            name: selectedFile.name,
+                                          });
+                                        }}
+                                        className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.75vw] transition-all duration-200"
+                                      >
+                                        Preview Full
+                                      </button>
+                                      {!localProduct.useLinkedDesign && (
+                                        <button
+                                          onClick={() => updateLocalField("tubSelectedOldDesign", null)}
+                                          className="px-[1vw] py-[0.4vw] cursor-pointer bg-red-500 text-white rounded-[0.4vw] hover:bg-red-600 font-medium text-[0.75vw] transition-all duration-200"
+                                        >
+                                          ✕ Remove
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })()}
@@ -1275,38 +1361,48 @@ return (
                                       : "Image"}
                                   </span>
                                 </div>
-                                <button
-                                  onClick={() => {
-                                    setPreviewModal({
-                                      isOpen: true,
-                                      type: selectedFile.type,
-                                      path: selectedFile.path,
-                                      name: selectedFile.name,
-                                    });
-                                  }}
-                                  className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.85vw] transition-all duration-200 shadow-sm hover:shadow-md absolute right-[2vw] top-[1.5vw]"
-                                >
-                                  <svg
-                                    className="w-[1vw] h-[1vw] inline-block mr-[0.3vw]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                <div className="flex justify-center gap-[0.5vw] mt-[0.5vw]">
+                                  <button
+                                    onClick={() => {
+                                      setPreviewModal({
+                                        isOpen: true,
+                                        type: selectedFile.type,
+                                        path: selectedFile.path,
+                                        name: selectedFile.name,
+                                      });
+                                    }}
+                                    className="px-[1vw] py-[0.4vw] cursor-pointer bg-purple-600 text-white rounded-[0.4vw] hover:bg-purple-700 font-medium text-[0.85vw] transition-all duration-200 shadow-sm hover:shadow-md"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                    />
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                    />
-                                  </svg>
-                                  Preview Full
-                                </button>
+                                    <svg
+                                      className="w-[1vw] h-[1vw] inline-block mr-[0.3vw]"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                      />
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                      />
+                                    </svg>
+                                    Preview Full
+                                  </button>
+                                  {!localProduct.useLinkedDesign && (
+                                    <button
+                                      onClick={() => updateLocalField("lidSelectedOldDesign", null)}
+                                      className="px-[1vw] py-[0.4vw] cursor-pointer bg-red-500 text-white rounded-[0.4vw] hover:bg-red-600 font-medium text-[0.85vw] transition-all duration-200"
+                                    >
+                                      ✕ Remove
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })()}
@@ -1328,22 +1424,30 @@ return (
                       checked={localProduct.designSharedMail}
                       onChange={(e) => {
                         if (localProduct.useLinkedDesign) return;
-                        updateLocalField("designSharedMail", e.target.checked);
-                        const newValue = e.target.checked
-                          ? "pending"
-                          : "approved";
-                        updateLocalField("designStatus", newValue);
-
-                        const productIsPOUpdated =
-                          localProduct.orderStatus &&
-                          localProduct.orderStatus !== "Artwork Pending" &&
-                          localProduct.orderStatus !== "Artwork Approved";
-                        const orderStatusV = e.target.checked
-                          ? "Artwork Pending"
-                          : "Artwork Approved";
-                        if (!productIsPOUpdated) {
-                          updateLocalField("orderStatus", orderStatusV);
-                        }
+                        const checked = e.target.checked;
+                        setLocalProduct(prev => {
+                          const updates = {
+                            ...prev,
+                            designSharedMail: checked,
+                            designStatus: checked ? "pending" : "approved",
+                          };
+                          // When checked → clear design files
+                          if (checked) {
+                            updates.lidDesignFile = null;
+                            updates.tubDesignFile = null;
+                            updates.lidSelectedOldDesign = null;
+                            updates.tubSelectedOldDesign = null;
+                          }
+                          // Update orderStatus only if not already PO-updated
+                          const productIsPOUpdated =
+                            prev.orderStatus &&
+                            prev.orderStatus !== "Artwork Pending" &&
+                            prev.orderStatus !== "Artwork Approved";
+                          if (!productIsPOUpdated) {
+                            updates.orderStatus = checked ? "Artwork Pending" : "Artwork Approved";
+                          }
+                          return updates;
+                        });
                       }}
                       disabled={localProduct.useLinkedDesign}
                       className="w-[1.1vw] h-[1.1vw] cursor-pointer"
@@ -1563,7 +1667,13 @@ return (
       {/* Action Buttons */}
       <div className="flex justify-end gap-3 p-6 border-t border-gray-300 bg-gray-50">
         <button
-          onClick={handleCloseChangeRequest}
+          onClick={() => {
+            if (pendingSaved) {
+              handleCloseChangeRequest(true); // skip orderStatus update
+            } else {
+              handleCloseChangeRequest();
+            }
+          }}
           className="px-6 py-2 bg-gray-300 text-gray-700 text-[.9vw] rounded cursor-pointer hover:bg-gray-400 font-medium"
         >
           Cancel
@@ -1574,105 +1684,123 @@ return (
         >
           Delete
         </button>
+
+        {/* Save button - only when in edit mode and orderStatus is "Order Pending" */}
+        {isEditMode && isOrderPending && (
+          <button
+            onClick={() => {
+              // Save data but KEEP orderStatus as "Order Pending" - never advance it
+              // Also carry a flag so handleDirectSave knows NOT to override orderStatus
+              const productToSave = {
+                ...localProduct,
+                orderStatus: "Order Pending",
+                _keepOrderPending: true, // signal to handleDirectSave
+              };
+              handleSubmitRequest(productToSave);
+              setPendingSaved(true);
+            }}
+            className="px-6 py-2 bg-amber-500 text-white text-[.9vw] cursor-pointer rounded hover:bg-yellow-600 font-medium"
+          >
+            Save
+          </button>
+        )}
+
         <button
           onClick={() => {
-            // Validation Logic - skip design validation if linked
             const validateChangeRequest = (prod) => {
-              // 1. IML Name Validation
               if (!prod.imlName) {
                 alert("Please enter IML Name.");
                 return false;
               }
-
-              // 2. Quantity & Stock Validation
               if (prod.imlType === "LID & TUB") {
                 if (!prod.lidLabelQty || !prod.lidProductionQty || !prod.tubLabelQty || !prod.tubProductionQty) {
                   alert("Please enter all Label and Production quantities for LID & TUB.");
                   return false;
                 }
                 if (Number(prod.lidLabelQty) < Number(prod.lidProductionQty)) {
-                  alert("LID: Please enter valid order and production quantity (Order Qty cannot be less than Production Qty).");
+                  alert("LID: Order Qty cannot be less than Production Qty.");
                   return false;
                 }
                 if (Number(prod.tubLabelQty) < Number(prod.tubProductionQty)) {
-                  alert("TUB: Please enter valid order and production quantity (Order Qty cannot be less than Production Qty).");
+                  alert("TUB: Order Qty cannot be less than Production Qty.");
                   return false;
                 }
               } else {
                 const labelQty = prod.imlType === "LID" ? prod.lidLabelQty : prod.tubLabelQty;
                 const prodQty = prod.imlType === "LID" ? prod.lidProductionQty : prod.tubProductionQty;
-
                 if (!labelQty || !prodQty) {
                   alert(`Please enter Label and Production quantities for ${prod.imlType}.`);
                   return false;
                 }
                 if (Number(labelQty) < Number(prodQty)) {
-                  alert(`${prod.imlType}: Please enter valid order and production quantity (Order Qty cannot be less than Production Qty).`);
+                  alert(`${prod.imlType}: Order Qty cannot be less than Production Qty.`);
                   return false;
                 }
               }
-
-              // 3. Design Validation - ONLY if NOT using linked design
               if (!prod.useLinkedDesign) {
                 if (prod.designType === "existing") {
                   if (prod.imlType === "LID & TUB" && !prod.singleImlDesign) {
-                    if (!prod.lidSelectedOldDesign) {
-                      alert("Please select a LID design.");
-                      return false;
-                    }
-                    if (!prod.tubSelectedOldDesign) {
-                      alert("Please select a TUB design.");
-                      return false;
-                    }
+                    if (!prod.lidSelectedOldDesign) { alert("Please select a LID design."); return false; }
+                    if (!prod.tubSelectedOldDesign) { alert("Please select a TUB design."); return false; }
                   } else {
-                    if (!prod.lidSelectedOldDesign) {
-                      alert("Please select a design.");
-                      return false;
-                    }
+                    if (!prod.lidSelectedOldDesign) { alert("Please select a design."); return false; }
                   }
                 } else if (prod.designType === "new") {
                   if (prod.designStatus === "approved") {
-                    if (!prod.approvedDate) {
-                      alert("Please select an approval date.");
-                      return false;
-                    }
+                    if (!prod.approvedDate) { alert("Please select an approval date."); return false; }
                     if (prod.imlType === "LID & TUB" && !prod.singleImlDesign) {
-                      if (!prod.lidDesignFile) {
-                        alert("Please upload a LID design file.");
-                        return false;
-                      }
-                      if (!prod.tubDesignFile) {
-                        alert("Please upload a TUB design file.");
-                        return false;
-                      }
+                      if (!prod.lidDesignFile) { alert("Please upload a LID design file."); return false; }
+                      if (!prod.tubDesignFile) { alert("Please upload a TUB design file."); return false; }
                     } else if (prod.imlType === "LID") {
-                      if (!prod.lidDesignFile) {
-                        alert("Please upload a design file.");
-                        return false;
-                      }
+                      if (!prod.lidDesignFile) { alert("Please upload a design file."); return false; }
                     } else if (prod.imlType === "TUB") {
-                      // ✅ FIX: For TUB type, check both lidDesignFile and tubDesignFile
-                      if (!prod.lidDesignFile && !prod.tubDesignFile) {
-                        alert("Please upload a design file for TUB.");
-                        return false;
-                      }
+                      if (!prod.lidDesignFile && !prod.tubDesignFile) { alert("Please upload a design file for TUB."); return false; }
                     }
                   }
                 }
-              } else {
-                // When using linked design, show info message
-                console.log('Using linked design - skipping design validation');
               }
               return true;
             };
 
             if (validateChangeRequest(localProduct)) {
-              handleSubmitRequest(localProduct);
+              setPendingSaved(false);
+
+              // ── Compute correct orderStatus based on actual design state ──
+              // Check if artwork is truly present
+              const hasArtwork = localProduct.useLinkedDesign
+                ? true // linked = design is inherited
+                : localProduct.designType === "existing"
+                  ? (!!localProduct.lidSelectedOldDesign || !!localProduct.tubSelectedOldDesign)
+                  : (!!localProduct.lidDesignFile || !!localProduct.tubDesignFile);
+
+              // If designSharedMail=true OR no artwork → Artwork Pending
+              const artworkPending = localProduct.designSharedMail || !hasArtwork;
+
+              // PO/production statuses should never be downgraded
+              const advancedStatuses = [
+                "Production Pending", "Production In Progress",
+                "Production Done", "Dispatched",
+              ];
+              const isAdvanced = advancedStatuses.includes(localProduct.orderStatus);
+
+              // "Order Pending" is overridden by Save Changes — it should resolve to artwork status
+              const finalOrderStatus = isAdvanced
+                ? localProduct.orderStatus
+                : artworkPending
+                  ? "Artwork Pending"
+                  : "Artwork Approved";
+
+              // Pass _keepOrderPending=false explicitly so handleDirectSave knows to use computed status
+              handleSubmitRequest({
+                ...localProduct,
+                orderStatus: finalOrderStatus,
+                _keepOrderPending: false,
+              });
             }
           }}
           className="px-6 py-2 bg-blue-600 text-white text-[.9vw] cursor-pointer rounded hover:bg-blue-700 font-medium"
         >
-          {isEditMode ? "Save Changes": "Submit Request"}
+          {isEditMode ? "Submit Changes" : "Submit Request"}
         </button>
       </div>
     </div>

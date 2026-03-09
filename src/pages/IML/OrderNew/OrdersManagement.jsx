@@ -1502,28 +1502,38 @@ const [confirmState, setConfirmState] = useState({
     revisedEstimateNo,
     revisedEstimateValue,
   ) => {
-    // 🔥 CHANGE 3: If the product was re-edited (had _wasArtworkApproved flag),
-    // restore its status to "Artwork Approved" after saving
     const order = orders.find((o) => o.id === tempChangeRequest.orderId);
     const originalProduct = order?.products?.find((p) => p.id === tempChangeRequest.productId);
-    const wasArtworkApproved = originalProduct?._wasArtworkApproved === true;
 
-    console.log(`originalProduct?.artworkStatus: ${originalProduct?.artworkStatus}`);
+    // If the "Save" (Order Pending) button was used, keep orderStatus as "Order Pending"
+    const keepOrderPending = localProduct._keepOrderPending === true;
 
-    const finalProduct = wasArtworkApproved
-      ? {
-          ...localProduct,
-          orderStatus: "Artwork Approved",
-          designStatus: "approved",
-          _wasArtworkApproved: undefined, // clear flag
-        }
-        : originalProduct?.designStatus == "approved" ?  {
-          ...localProduct,
-          orderStatus: "Artwork Approved",
-          designStatus: "approved",
-          _wasArtworkApproved: undefined, // clear flag
-        }
-      : { ...localProduct, _wasArtworkApproved: undefined };
+    let finalOrderStatus;
+    if (keepOrderPending) {
+      // "Save" button path: always keep "Order Pending", never advance
+      finalOrderStatus = "Order Pending";
+    } else {
+      // "Save Changes" button path: use the already-computed orderStatus from ChangeRequestModal
+      // which already accounts for designSharedMail and artwork presence.
+      // Only guard against going backwards from advanced production statuses.
+      const advancedStatuses = [
+        "Production Pending", "Production In Progress",
+        "Production Done", "Dispatched",
+      ];
+      if (advancedStatuses.includes(originalProduct?.orderStatus)) {
+        finalOrderStatus = originalProduct.orderStatus;
+      } else {
+        // Trust the orderStatus computed in ChangeRequestModal
+        finalOrderStatus = localProduct.orderStatus;
+      }
+    }
+
+    const finalProduct = {
+      ...localProduct,
+      orderStatus: finalOrderStatus,
+      _keepOrderPending: undefined, // strip internal flag before saving
+      _wasArtworkApproved: undefined, // strip legacy flag
+    };
 
     const now = new Date().toISOString();
     const updatedOrders = orders.map((o) =>
@@ -1538,7 +1548,7 @@ const [confirmState, setConfirmState] = useState({
           },
           products: o.products.map((p) =>
             p.id === tempChangeRequest.productId
-              ? { ...p, ...finalProduct, updatedAt: now } // ✅ Apply all changes + stamp date
+              ? { ...p, ...finalProduct, updatedAt: now }
               : p,
           ),
         }
@@ -2720,7 +2730,8 @@ const [confirmState, setConfirmState] = useState({
             <>
               <div className="flex gap-[1vw]">
                 {(() => {
-                  const deleteReqCount = orders.filter(o => o.productDeleted && !o.orderConfirmDelete).length;
+                  // const deleteReqCount = orders.filter(o => o.productDeleted && !o.orderConfirmDelete).length;
+                  const deleteReqCount = orders.filter(o => o.productDeleted && !o.orderConfirmDelete && !o.refundInfo).length;
                   const refundedOrders = JSON.parse(localStorage.getItem("imlorders_refunded") || "[]");
                   const readIds = new Set(JSON.parse(localStorage.getItem("imlorders_refunded_read") || "[]"));
                   const refundUnread = refundedOrders.filter((o, i) => {
@@ -3619,7 +3630,7 @@ const [confirmState, setConfirmState] = useState({
                                                                   }
                                                                   className="px-[.2vw] py-[0.4vw] cursor-pointer bg-amber-500 text-white rounded hover:bg-amber-600 text-[.75vw] font-medium transition-all w-full whitespace-pre"
                                                                 >
-                                                                  ⚠️ Enter PO Details
+                                                                  Enter PO Details
                                                                 </button>
                                                               ) : null}
                                                             </>

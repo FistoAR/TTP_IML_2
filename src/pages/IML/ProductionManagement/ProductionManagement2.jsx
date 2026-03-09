@@ -40,14 +40,14 @@ const ProductionManagement = () => {
       // Already formatted like "5/3/2026" or "05/03/2026" (en-IN locale)
       if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
         const [d, m, y] = raw.split("/");
-        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        return `${String(d).padStart(2,"0")}-${months[parseInt(m,10)-1]}-${y}`;
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return `${String(d).padStart(2, "0")}-${months[parseInt(m, 10) - 1]}-${y}`;
       }
       // ISO string
       const dt = new Date(raw);
       if (isNaN(dt.getTime())) return raw;
-      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-      return `${String(dt.getDate()).padStart(2,"0")}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${String(dt.getDate()).padStart(2, "0")}-${months[dt.getMonth()]}-${dt.getFullYear()}`;
     } catch { return raw; }
   };
 
@@ -189,87 +189,20 @@ const ProductionManagement = () => {
       const labelData = storedLabelQty ? JSON.parse(storedLabelQty) : {};
       const productionItems = [];
 
-      allOrders.forEach((order) => {
-        order.products?.forEach((product) => {
-          const key = `${order.id}_${product.id}`;
-          const labelInfo = labelData[key];
+      allOrders
+        .filter((order) => order.productDeleted !== true) // ❌ Skip deleted/refund-requested orders
+        .forEach((order) => {
+          order.products?.forEach((product) => {
+            const key = `${order.id}_${product.id}`;
+            const labelInfo = labelData[key];
 
-          const allocationData = getAllocationData(order.id, product.id);
-          const hasAllocations = allocationData.totalAllocated > 0;
+            const allocationData = getAllocationData(order.id, product.id);
+            const hasAllocations = allocationData.totalAllocated > 0;
 
-          // ── NEW: Products in purchase but labels NOT yet received → show as "Awaiting for Labels" ──
-          if (!labelInfo && !hasAllocations && product.moveToPurchase) {
-            productionItems.push({
-              id: `${key}_awaiting`,
-              originalId: key,
-              orderId: order.id,
-              productId: product.id,
-              orderNumber: order.orderNumber,
-              companyName: order.contact.company,
-              productCategory: product.productName,
-              size: product.size,
-              imlName: product.imlName,
-              imlType: product.imlType,
-              lidColor: product.lidColor || "N/A",
-              tubColor: product.tubColor || "N/A",
-              labelType: product.imlType,
-              orderQuantity: 0,
-              receivedQuantity: 0,
-              allReceived: false,
-              lidTotal: 0,
-              tubTotal: 0,
-              lidRemaining: 0,
-              tubRemaining: 0,
-              remainingLabels: 0,
-              lidLabelQty: toNumber(product.lidLabelQty || 0),
-              tubLabelQty: toNumber(product.tubLabelQty || 0),
-              origin: "Main Order",
-              isFromRemaining: false,
-              followups: 0,
-              historyCount: 0,
-              isAwaitingLabels: true, // ← flag to render differently
-              lastUpdated: null,
-            });
-            return;
-          }
-
-          if (!labelInfo && !hasAllocations) return;
-
-          if (labelInfo) {
-            const mainStoredProduction = localStorage.getItem(STORAGE_KEY_PRODUCTION_FOLLOWUPS);
-            const mainProductionData = mainStoredProduction ? JSON.parse(mainStoredProduction) : {};
-            const mainFollowups = Array.isArray(mainProductionData[key]) ? mainProductionData[key] : [];
-
-            const labelTotals = getTotalLabels(order.id, product.id, product.imlType);
-            const mainLidTotal = labelTotals.lidTotal;
-            const mainTubTotal = labelTotals.tubTotal;
-            const mainTotal = labelTotals.total;
-
-            let mainLidUsed = 0;
-            let mainTubUsed = 0;
-            let totalUsed = 0;
-
-            if (product.imlType === "LID & TUB") {
-              mainFollowups.forEach((e) => {
-                const accepted = toNumber(e.acceptedComponents || 0);
-                if (e.componentType === "LID") mainLidUsed += accepted;
-                else if (e.componentType === "TUB") mainTubUsed += accepted;
-                else { mainLidUsed += accepted; mainTubUsed += accepted; }
-              });
-              totalUsed = mainLidUsed + mainTubUsed;
-            } else {
-              totalUsed = mainFollowups.reduce((sum, e) => sum + toNumber(e.acceptedComponents || 0), 0);
-              mainLidUsed = totalUsed;
-              mainTubUsed = totalUsed;
-            }
-
-            const mainLidRemaining = Math.max(mainLidTotal - mainLidUsed, 0);
-            const mainTubRemaining = Math.max(mainTubTotal - mainTubUsed, 0);
-            const mainRemainingTotal = Math.max(mainTotal - totalUsed, 0);
-
-            if (mainTotal > 0) {
+            // ── NEW: Products in purchase but labels NOT yet received → show as "Awaiting for Labels" ──
+            if (!labelInfo && !hasAllocations && product.moveToPurchase) {
               productionItems.push({
-                id: `${key}_main`,
+                id: `${key}_awaiting`,
                 originalId: key,
                 orderId: order.id,
                 productId: product.id,
@@ -281,125 +214,194 @@ const ProductionManagement = () => {
                 imlType: product.imlType,
                 lidColor: product.lidColor || "N/A",
                 tubColor: product.tubColor || "N/A",
-                labelType: labelInfo.imlType || product.imlType,
-                orderQuantity: labelInfo.orderQuantity || 0,
-                receivedQuantity: mainTotal,
-                allReceived: labelInfo.allReceived || false,
-                lidTotal: mainLidTotal,
-                tubTotal: mainTubTotal,
-                lidRemaining: mainLidRemaining,
-                tubRemaining: mainTubRemaining,
-                remainingLabels: mainRemainingTotal,
-                // Label order qtys from product
+                labelType: product.imlType,
+                orderQuantity: 0,
+                receivedQuantity: 0,
+                allReceived: false,
+                lidTotal: 0,
+                tubTotal: 0,
+                lidRemaining: 0,
+                tubRemaining: 0,
+                remainingLabels: 0,
                 lidLabelQty: toNumber(product.lidLabelQty || 0),
                 tubLabelQty: toNumber(product.tubLabelQty || 0),
                 origin: "Main Order",
                 isFromRemaining: false,
-                followups: mainFollowups.length,
-                historyCount: labelInfo.history ? labelInfo.history.length : 0,
+                followups: 0,
+                historyCount: 0,
+                isAwaitingLabels: true, // ← flag to render differently
+                lastUpdated: null,
+              });
+              return;
+            }
+
+            if (!labelInfo && !hasAllocations) return;
+
+            if (labelInfo) {
+              const mainStoredProduction = localStorage.getItem(STORAGE_KEY_PRODUCTION_FOLLOWUPS);
+              const mainProductionData = mainStoredProduction ? JSON.parse(mainStoredProduction) : {};
+              const mainFollowups = Array.isArray(mainProductionData[key]) ? mainProductionData[key] : [];
+
+              const labelTotals = getTotalLabels(order.id, product.id, product.imlType);
+              const mainLidTotal = labelTotals.lidTotal;
+              const mainTubTotal = labelTotals.tubTotal;
+              const mainTotal = labelTotals.total;
+
+              let mainLidUsed = 0;
+              let mainTubUsed = 0;
+              let totalUsed = 0;
+
+              if (product.imlType === "LID & TUB") {
+                mainFollowups.forEach((e) => {
+                  const accepted = toNumber(e.acceptedComponents || 0);
+                  if (e.componentType === "LID") mainLidUsed += accepted;
+                  else if (e.componentType === "TUB") mainTubUsed += accepted;
+                  else { mainLidUsed += accepted; mainTubUsed += accepted; }
+                });
+                totalUsed = mainLidUsed + mainTubUsed;
+              } else {
+                totalUsed = mainFollowups.reduce((sum, e) => sum + toNumber(e.acceptedComponents || 0), 0);
+                mainLidUsed = totalUsed;
+                mainTubUsed = totalUsed;
+              }
+
+              const mainLidRemaining = Math.max(mainLidTotal - mainLidUsed, 0);
+              const mainTubRemaining = Math.max(mainTubTotal - mainTubUsed, 0);
+              const mainRemainingTotal = Math.max(mainTotal - totalUsed, 0);
+
+              if (mainTotal > 0) {
+                productionItems.push({
+                  id: `${key}_main`,
+                  originalId: key,
+                  orderId: order.id,
+                  productId: product.id,
+                  orderNumber: order.orderNumber,
+                  companyName: order.contact.company,
+                  productCategory: product.productName,
+                  size: product.size,
+                  imlName: product.imlName,
+                  imlType: product.imlType,
+                  lidColor: product.lidColor || "N/A",
+                  tubColor: product.tubColor || "N/A",
+                  labelType: labelInfo.imlType || product.imlType,
+                  orderQuantity: labelInfo.orderQuantity || 0,
+                  receivedQuantity: mainTotal,
+                  allReceived: labelInfo.allReceived || false,
+                  lidTotal: mainLidTotal,
+                  tubTotal: mainTubTotal,
+                  lidRemaining: mainLidRemaining,
+                  tubRemaining: mainTubRemaining,
+                  remainingLabels: mainRemainingTotal,
+                  // Label order qtys from product
+                  lidLabelQty: toNumber(product.lidLabelQty || 0),
+                  tubLabelQty: toNumber(product.tubLabelQty || 0),
+                  origin: "Main Order",
+                  isFromRemaining: false,
+                  followups: mainFollowups.length,
+                  historyCount: labelInfo.history ? labelInfo.history.length : 0,
+                  lastUpdated: (() => {
+                    if (product.imlType === "LID & TUB") {
+                      // Per-component last entry dates
+                      const lidEntries = mainFollowups.filter(e => e.componentType === "LID");
+                      const tubEntries = mainFollowups.filter(e => e.componentType === "TUB");
+                      const fallback = (labelInfo.history && labelInfo.history.length > 0)
+                        ? (labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null)
+                        : null;
+                      return {
+                        lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || fallback : fallback,
+                        tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || fallback : fallback,
+                      };
+                    }
+                    if (mainFollowups.length > 0) return mainFollowups[mainFollowups.length - 1].date || null;
+                    if (labelInfo.history && labelInfo.history.length > 0)
+                      return labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null;
+                    return null;
+                  })(),
+                });
+              }
+            }
+
+            if (hasAllocations) {
+              const remainingStoredProduction = localStorage.getItem("iml_remaining_production_followups");
+              const remainingProductionData = remainingStoredProduction ? JSON.parse(remainingStoredProduction) : {};
+              const remainingFollowups = Array.isArray(remainingProductionData[key]) ? remainingProductionData[key] : [];
+
+              const allocatedTotal = allocationData.totalAllocated;
+              let allocLidTotal = 0;
+              let allocTubTotal = 0;
+
+              if (product.imlType === "LID & TUB") {
+                allocLidTotal = Math.floor(allocatedTotal / 2);
+                allocTubTotal = allocatedTotal - allocLidTotal;
+              } else if (product.imlType === "LID") {
+                allocLidTotal = allocatedTotal;
+              } else if (product.imlType === "TUB") {
+                allocTubTotal = allocatedTotal;
+              } else {
+                allocLidTotal = allocatedTotal;
+                allocTubTotal = allocatedTotal;
+              }
+
+              let allocLidUsed = 0;
+              let allocTubUsed = 0;
+
+              if (product.imlType === "LID & TUB") {
+                remainingFollowups.forEach((e) => {
+                  const accepted = toNumber(e.acceptedComponents || 0);
+                  if (e.componentType === "LID") allocLidUsed += accepted;
+                  else if (e.componentType === "TUB") allocTubUsed += accepted;
+                });
+              } else {
+                allocLidUsed = remainingFollowups.reduce((sum, e) => sum + toNumber(e.acceptedComponents || 0), 0);
+                allocTubUsed = allocLidUsed;
+              }
+
+              const allocLidRemaining = Math.max(allocLidTotal - allocLidUsed, 0);
+              const allocTubRemaining = Math.max(allocTubTotal - allocTubUsed, 0);
+              const allocRemainingTotal = Math.max(allocatedTotal - (allocLidUsed + allocTubUsed), 0);
+
+              productionItems.push({
+                id: `${key}_remaining`,
+                originalId: key,
+                orderId: order.id,
+                productId: product.id,
+                orderNumber: order.orderNumber,
+                companyName: order.contact.company,
+                productCategory: product.productName,
+                size: product.size,
+                imlName: `${product.imlName}`,
+                imlType: product.imlType,
+                lidColor: product.lidColor || "N/A",
+                tubColor: product.tubColor || "N/A",
+                labelType: product.imlType,
+                orderQuantity: 0,
+                receivedQuantity: allocatedTotal,
+                allReceived: true,
+                lidTotal: allocLidTotal,
+                tubTotal: allocTubTotal,
+                lidRemaining: allocLidRemaining,
+                tubRemaining: allocTubRemaining,
+                remainingLabels: allocRemainingTotal,
+                lidLabelQty: toNumber(product.lidLabelQty || 0),
+                tubLabelQty: toNumber(product.tubLabelQty || 0),
+                origin: "Remaining Allocation",
+                isFromRemaining: true,
+                followups: remainingFollowups.length,
                 lastUpdated: (() => {
                   if (product.imlType === "LID & TUB") {
-                    // Per-component last entry dates
-                    const lidEntries = mainFollowups.filter(e => e.componentType === "LID");
-                    const tubEntries = mainFollowups.filter(e => e.componentType === "TUB");
-                    const fallback = (labelInfo.history && labelInfo.history.length > 0)
-                      ? (labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null)
-                      : null;
+                    const lidEntries = remainingFollowups.filter(e => e.componentType === "LID");
+                    const tubEntries = remainingFollowups.filter(e => e.componentType === "TUB");
                     return {
-                      lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || fallback : fallback,
-                      tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || fallback : fallback,
+                      lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || null : null,
+                      tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || null : null,
                     };
                   }
-                  if (mainFollowups.length > 0) return mainFollowups[mainFollowups.length - 1].date || null;
-                  if (labelInfo.history && labelInfo.history.length > 0)
-                    return labelInfo.history[labelInfo.history.length - 1].receivedDate || labelInfo.history[labelInfo.history.length - 1].date || null;
-                  return null;
+                  return remainingFollowups.length > 0 ? remainingFollowups[remainingFollowups.length - 1].date || null : null;
                 })(),
               });
             }
-          }
-
-          if (hasAllocations) {
-            const remainingStoredProduction = localStorage.getItem("iml_remaining_production_followups");
-            const remainingProductionData = remainingStoredProduction ? JSON.parse(remainingStoredProduction) : {};
-            const remainingFollowups = Array.isArray(remainingProductionData[key]) ? remainingProductionData[key] : [];
-
-            const allocatedTotal = allocationData.totalAllocated;
-            let allocLidTotal = 0;
-            let allocTubTotal = 0;
-
-            if (product.imlType === "LID & TUB") {
-              allocLidTotal = Math.floor(allocatedTotal / 2);
-              allocTubTotal = allocatedTotal - allocLidTotal;
-            } else if (product.imlType === "LID") {
-              allocLidTotal = allocatedTotal;
-            } else if (product.imlType === "TUB") {
-              allocTubTotal = allocatedTotal;
-            } else {
-              allocLidTotal = allocatedTotal;
-              allocTubTotal = allocatedTotal;
-            }
-
-            let allocLidUsed = 0;
-            let allocTubUsed = 0;
-
-            if (product.imlType === "LID & TUB") {
-              remainingFollowups.forEach((e) => {
-                const accepted = toNumber(e.acceptedComponents || 0);
-                if (e.componentType === "LID") allocLidUsed += accepted;
-                else if (e.componentType === "TUB") allocTubUsed += accepted;
-              });
-            } else {
-              allocLidUsed = remainingFollowups.reduce((sum, e) => sum + toNumber(e.acceptedComponents || 0), 0);
-              allocTubUsed = allocLidUsed;
-            }
-
-            const allocLidRemaining = Math.max(allocLidTotal - allocLidUsed, 0);
-            const allocTubRemaining = Math.max(allocTubTotal - allocTubUsed, 0);
-            const allocRemainingTotal = Math.max(allocatedTotal - (allocLidUsed + allocTubUsed), 0);
-
-            productionItems.push({
-              id: `${key}_remaining`,
-              originalId: key,
-              orderId: order.id,
-              productId: product.id,
-              orderNumber: order.orderNumber,
-              companyName: order.contact.company,
-              productCategory: product.productName,
-              size: product.size,
-              imlName: `${product.imlName}`,
-              imlType: product.imlType,
-              lidColor: product.lidColor || "N/A",
-              tubColor: product.tubColor || "N/A",
-              labelType: product.imlType,
-              orderQuantity: 0,
-              receivedQuantity: allocatedTotal,
-              allReceived: true,
-              lidTotal: allocLidTotal,
-              tubTotal: allocTubTotal,
-              lidRemaining: allocLidRemaining,
-              tubRemaining: allocTubRemaining,
-              remainingLabels: allocRemainingTotal,
-              lidLabelQty: toNumber(product.lidLabelQty || 0),
-              tubLabelQty: toNumber(product.tubLabelQty || 0),
-              origin: "Remaining Allocation",
-              isFromRemaining: true,
-              followups: remainingFollowups.length,
-              lastUpdated: (() => {
-                if (product.imlType === "LID & TUB") {
-                  const lidEntries = remainingFollowups.filter(e => e.componentType === "LID");
-                  const tubEntries = remainingFollowups.filter(e => e.componentType === "TUB");
-                  return {
-                    lid: lidEntries.length > 0 ? lidEntries[lidEntries.length - 1].date || null : null,
-                    tub: tubEntries.length > 0 ? tubEntries[tubEntries.length - 1].date || null : null,
-                  };
-                }
-                return remainingFollowups.length > 0 ? remainingFollowups[remainingFollowups.length - 1].date || null : null;
-              })(),
-            });
-          }
+          });
         });
-      });
 
       setProductionData(productionItems);
     } catch (error) {
@@ -904,7 +906,19 @@ const ProductionManagement = () => {
                                                         onClick={() => handleViewDetails(item, "LID")}
                                                         className="px-[0.85vw] py-[.3vw] bg-green-600 text-white rounded-[0.4vw] text-[.75vw] font-medium hover:bg-green-700 cursor-pointer transition-all inline-flex items-center gap-[0.3vw]"
                                                       >
-                                                        <span>👁️</span> LID
+                                                        <svg
+                                                          xmlns="http://www.w3.org/2000/svg"
+                                                          viewBox="0 0 24 24"
+                                                          fill="none"
+                                                          stroke="currentColor"
+                                                          strokeWidth="2"
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                          className="w-[1vw] h-[1vw] inline-block"
+                                                        >
+                                                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                          <circle cx="12" cy="12" r="3" />
+                                                        </svg> LID
                                                       </button>
                                                     </td>
                                                   </tr>
@@ -941,7 +955,19 @@ const ProductionManagement = () => {
                                                         onClick={() => handleViewDetails(item, "TUB")}
                                                         className="px-[0.85vw] py-[.3vw] bg-blue-600 text-white rounded-[0.4vw] text-[.75vw] font-medium hover:bg-blue-700 cursor-pointer transition-all inline-flex items-center gap-[0.3vw]"
                                                       >
-                                                        <span>👁️</span> TUB
+                                                        <svg
+                                                          xmlns="http://www.w3.org/2000/svg"
+                                                          viewBox="0 0 24 24"
+                                                          fill="none"
+                                                          stroke="currentColor"
+                                                          strokeWidth="2"
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                          className="w-[1vw] h-[1vw] inline-block"
+                                                        >
+                                                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                          <circle cx="12" cy="12" r="3" />
+                                                        </svg> TUB
                                                       </button>
                                                     </td>
                                                   </tr>
@@ -990,7 +1016,19 @@ const ProductionManagement = () => {
                                                     onClick={() => handleViewDetails(item, null)}
                                                     className="px-[1vw] py-[.35vw] bg-indigo-600 text-white rounded-[0.4vw] text-[.8vw] font-medium hover:bg-indigo-700 cursor-pointer transition-all inline-flex items-center gap-[0.4vw]"
                                                   >
-                                                    <span>👁️</span> View
+                                                    <svg
+                                                      xmlns="http://www.w3.org/2000/svg"
+                                                      viewBox="0 0 24 24"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      strokeWidth="2"
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                      className="w-[1vw] h-[1vw] inline-block"
+                                                    >
+                                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                      <circle cx="12" cy="12" r="3" />
+                                                    </svg> View
                                                   </button>
                                                 </td>
                                               </tr>
