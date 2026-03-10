@@ -533,6 +533,23 @@ const BillingDetails = () => {
     return { totalPaid, billAmount, balanceDue };
   };
 
+
+  // Robust helper: find a billing entry by billingId, searching ALL order keys.
+  // This handles records created before orderId was stored on the billingEntry object.
+  const findBillingEntry = (allBilling, targetBillingId, preferredOrderId) => {
+    // Fast path: try preferredOrderId first
+    if (preferredOrderId && allBilling[preferredOrderId]) {
+      const idx = allBilling[preferredOrderId].findIndex(b => b.billingId === targetBillingId);
+      if (idx >= 0) return { orderId: preferredOrderId, billIndex: idx };
+    }
+    // Fallback: scan all keys
+    for (const orderId of Object.keys(allBilling)) {
+      const idx = allBilling[orderId].findIndex(b => b.billingId === targetBillingId);
+      if (idx >= 0) return { orderId, billIndex: idx };
+    }
+    return null;
+  };
+
   // Add payment record
   const addPaymentRecord = () => {
     if (!bulkPayment.paymentType) {
@@ -559,22 +576,13 @@ const BillingDetails = () => {
     const billingData = localStorage.getItem(STORAGE_KEY_BILLING);
     const allBilling = billingData ? JSON.parse(billingData) : {};
 
-    if (allBilling[billingRecord.orderId]) {
-      const billIndex = allBilling[billingRecord.orderId].findIndex(
-        (b) => b.billingId === billingRecord.billingId
-      );
-
-      if (billIndex >= 0) {
-        allBilling[billingRecord.orderId][billIndex] = {
-          ...allBilling[billingRecord.orderId][billIndex],
-          paymentRecords: updatedRecords,
-        };
-
-        localStorage.setItem(
-          STORAGE_KEY_BILLING,
-          JSON.stringify(allBilling)
-        );
-      }
+    const found = findBillingEntry(allBilling, billingRecord.billingId, billingRecord.orderId);
+    if (found) {
+      allBilling[found.orderId][found.billIndex] = {
+        ...allBilling[found.orderId][found.billIndex],
+        paymentRecords: updatedRecords,
+      };
+      localStorage.setItem(STORAGE_KEY_BILLING, JSON.stringify(allBilling));
     }
 
     // Reset form
@@ -599,22 +607,13 @@ const BillingDetails = () => {
       const billingData = localStorage.getItem(STORAGE_KEY_BILLING);
       const allBilling = billingData ? JSON.parse(billingData) : {};
 
-      if (allBilling[billingRecord.orderId]) {
-        const billIndex = allBilling[billingRecord.orderId].findIndex(
-          (b) => b.billingId === billingRecord.billingId
-        );
-
-        if (billIndex >= 0) {
-          allBilling[billingRecord.orderId][billIndex] = {
-            ...allBilling[billingRecord.orderId][billIndex],
-            paymentRecords: updatedRecords,
-          };
-
-          localStorage.setItem(
-            STORAGE_KEY_BILLING,
-            JSON.stringify(allBilling)
-          );
-        }
+      const found = findBillingEntry(allBilling, billingRecord.billingId, billingRecord.orderId);
+      if (found) {
+        allBilling[found.orderId][found.billIndex] = {
+          ...allBilling[found.orderId][found.billIndex],
+          paymentRecords: updatedRecords,
+        };
+        localStorage.setItem(STORAGE_KEY_BILLING, JSON.stringify(allBilling));
       }
     }
   };
@@ -712,24 +711,14 @@ const BillingDetails = () => {
     const billingStored = localStorage.getItem(STORAGE_KEY_BILLING);
     if (billingStored) {
       const allBilling = JSON.parse(billingStored);
-
-      if (allBilling[billingRecord.orderId]) {
-        const billIndex = allBilling[billingRecord.orderId].findIndex(
-          (b) => b.billingId === billingRecord.billingId
-        );
-
-        if (billIndex >= 0) {
-          allBilling[billingRecord.orderId][billIndex] = {
-            ...allBilling[billingRecord.orderId][billIndex],
-            status: "Dispatched",
-            dispatchedAt: new Date().toISOString(),
-          };
-
-          localStorage.setItem(
-            STORAGE_KEY_BILLING,
-            JSON.stringify(allBilling)
-          );
-        }
+      const found = findBillingEntry(allBilling, billingRecord.billingId, billingRecord.orderId);
+      if (found) {
+        allBilling[found.orderId][found.billIndex] = {
+          ...allBilling[found.orderId][found.billIndex],
+          status: "Dispatched",
+          dispatchedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(STORAGE_KEY_BILLING, JSON.stringify(allBilling));
       }
     }
 

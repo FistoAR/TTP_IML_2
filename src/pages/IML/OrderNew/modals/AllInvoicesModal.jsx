@@ -99,7 +99,8 @@ export default function AllInvoicesModal({ allInvoicesModal, allInvoicesTab, ord
   };
 
   // Filter orders for Delete Requests (productDeleted: true, NOT confirmed yet)
-  const deleteRequestOrders = orders.filter(o => o.productDeleted && !o.orderConfirmDelete);
+  const deleteRequestOrders = orders.filter(o => o.productDeleted && !o.orderConfirmDelete && !o.refundInfo);
+  // const deleteReqCount = orders.filter(o => o.productDeleted && !o.orderConfirmDelete && !o.refundInfo).length;
 
   // Filter orders for Delete History (orderConfirmDelete: true)
   const deleteHistoryOrders = orders.filter(o => o.orderConfirmDelete);

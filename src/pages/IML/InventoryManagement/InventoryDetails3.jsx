@@ -339,6 +339,11 @@ const InventoryDetails = () => {
         .filter(Boolean);
 
       const salesPaymentData = {
+        // billId must be unique per entry — used by SalesPayment to distinguish
+        // which bills have been sent to billing (matching against salesBillId in billing storage).
+        // Without a billId, all entries from the same order share billId=undefined
+        // and a single billed entry would incorrectly mark all others as "✓ Sent to Billing".
+        billId: `bill_${order.id}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         orderId: order.id,
         orderNumber: order.orderNumber,
         contact: order.contact,

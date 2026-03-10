@@ -180,6 +180,12 @@ const [confirmState, setConfirmState] = useState({
     onNo: () => {setConfirmState({isOpen: false})},
   });
 
+  const [reEditConfirm, setReEditConfirm] = useState({
+    isOpen: false,
+    order: null,
+    product: null,
+  });
+
   const [refundDetailsModal, setRefundDetailsModal] = useState({ isOpen: false });
 
   const [tempChangeRequest, setTempChangeRequest] = useState(null);
@@ -754,46 +760,44 @@ const [confirmState, setConfirmState] = useState({
     });
   };
 
+  // Re-edit confirm handler
+  const handleReEditConfirm = () => {
+    const { order, product } = reEditConfirm;
+    setReEditConfirm({ isOpen: false, order: null, product: null });
+
+    const updates = {
+      orderStatus: "Order Pending",
+      designStatus: "approved",
+      designSharedMail: false,
+      _wasArtworkApproved: true,
+    };
+
+    updateOrderProductBatch(order.id, product.id, updates);
+
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const storedOrders = JSON.parse(stored || '[]');
+    const updatedOrders = storedOrders.map(o =>
+      o.id === order.id
+        ? { ...o, products: o.products.map(p => p.id === product.id ? { ...p, ...updates } : p) }
+        : o
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new Event('ordersUpdated'));
+
+    setTimeout(() => {
+      const freshOrders = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      const freshOrder = freshOrders.find(o => o.id === order.id);
+      const freshProduct = freshOrder?.products?.find(p => p.id === product.id);
+      handleEditRequest(freshOrder, freshProduct);
+    }, 50);
+  };
+
   // Modal handlers
   const handleCloseChangeRequest = (skipRestore = false) => {
     console.log(`Change request close triggered`);
     
-    // Check if we're in re-edit mode and need to restore status on cancel
-    const isEditMode = sessionStorage.getItem("isEditMode") === "true";
-    if (isEditMode && changeRequestModal.order && changeRequestModal.product) {
-      const order = changeRequestModal.order;
-      const product = changeRequestModal.product;
-      
-      // Find the current product in orders to check its status
-      const currentOrder = orders.find(o => o.id === order.id);
-      const currentProduct = currentOrder?.products?.find(p => p.id === product.id);
-      
-      if (currentProduct && currentProduct.orderStatus === "Order Pending") {
-        // Restore based on designStatus: approved → "Artwork Approved", else → "Artwork Pending"
-        const restoredStatus = currentProduct.designStatus === "approved"
-          ? "Artwork Approved"
-          : "Artwork Pending";
-        
-        const updatedOrders = orders.map(o =>
-          o.id === order.id
-            ? {
-                ...o,
-                products: o.products.map(p =>
-                  p.id === product.id
-                    ? { ...p, orderStatus: restoredStatus }
-                    : p
-                )
-              }
-            : o
-        );
-        setOrders(updatedOrders);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-        console.log(`Artwork restored`);
-      }
-    }
-    else {
-      console.log(`Artwork not restored`);
-    }
+    // When cancel/close is clicked on an "Order Pending" product, do NOT restore/change orderStatus
+    // The product should remain as "Order Pending" so the user can re-open and continue editing
     
     sessionStorage.removeItem("isEditMode");
     setChangeRequestModal({ isOpen: false, order: null, product: null });
@@ -1535,6 +1539,32 @@ const [confirmState, setConfirmState] = useState({
       _wasArtworkApproved: undefined, // strip legacy flag
     };
 
+    // ── Detect whether any design-related field actually changed ──
+    // Compare the final saved product against the original product before editing.
+    // Only design changes should propagate to linked products; non-design edits
+    // (colour, quantity, IML name, IML type, etc.) must NOT affect linked products' statuses.
+    // const originalProduct = tempChangeRequest.productDetails; // snapshot before editing
+    const designFieldsToSync = [
+      'designType', 'lidDesignFile', 'tubDesignFile',
+      'lidSelectedOldDesign', 'tubSelectedOldDesign',
+      'designStatus', 'approvedDate',
+      'designSharedMail', 'singleImlDesign',
+    ];
+
+    const designActuallyChanged =
+      finalProduct.designType             !== originalProduct.designType ||
+      finalProduct.designStatus           !== originalProduct.designStatus ||
+      finalProduct.designSharedMail       !== originalProduct.designSharedMail ||
+      finalProduct.singleImlDesign        !== originalProduct.singleImlDesign ||
+      finalProduct.approvedDate           !== originalProduct.approvedDate ||
+      finalProduct.lidSelectedOldDesign   !== originalProduct.lidSelectedOldDesign ||
+      finalProduct.tubSelectedOldDesign   !== originalProduct.tubSelectedOldDesign ||
+      // File objects: compare by name+size since references differ after re-upload
+      (finalProduct.lidDesignFile?.name   !== originalProduct.lidDesignFile?.name) ||
+      (finalProduct.lidDesignFile?.size   !== originalProduct.lidDesignFile?.size) ||
+      (finalProduct.tubDesignFile?.name   !== originalProduct.tubDesignFile?.name) ||
+      (finalProduct.tubDesignFile?.size   !== originalProduct.tubDesignFile?.size);
+
     const now = new Date().toISOString();
     const updatedOrders = orders.map((o) =>
       o.id === tempChangeRequest.orderId
@@ -1546,11 +1576,28 @@ const [confirmState, setConfirmState] = useState({
             estimatedNumber: revisedEstimateNo,
             estimatedValue: revisedEstimateValue,
           },
-          products: o.products.map((p) =>
-            p.id === tempChangeRequest.productId
-              ? { ...p, ...finalProduct, updatedAt: now }
-              : p,
-          ),
+          products: o.products.map((p) => {
+            // Always update the directly-edited product
+            if (p.id === tempChangeRequest.productId) {
+              return { ...p, ...finalProduct, updatedAt: now };
+            }
+            // Only propagate to linked products when design actually changed.
+            // Non-design edits (colour, qty, IML name/type) do NOT affect linked products.
+            if (
+              p.useLinkedDesign &&
+              p.linkedDesignSource?.productId === tempChangeRequest.productId &&
+              designActuallyChanged
+            ) {
+              const syncedFields = {};
+              designFieldsToSync.forEach(field => {
+                syncedFields[field] = finalProduct[field];
+              });
+              // Also sync orderStatus only when design changed
+              syncedFields.orderStatus = finalProduct.orderStatus;
+              return { ...p, ...syncedFields, updatedAt: now };
+            }
+            return p;
+          }),
         }
         : o,
     );
@@ -3270,12 +3317,12 @@ const [confirmState, setConfirmState] = useState({
                                               else {
                                                 if (product.imlType === "LID & TUB") {
                                                   if (lidTotal > 0 || tubTotal > 0) {
-                                                    labelStatusText = 'Labels In-Progress';
+                                                    labelStatusText = 'Partial Qty Received';
                                                   }
                                                 }
                                                 else {
                                                   if (singleTotal > 0) {
-                                                    labelStatusText = 'Labels In-Progress';
+                                                    labelStatusText = 'Partial Qty Received';
                                                   }
                                                   else {
                                                     labelStatusText = 'None';
@@ -3545,53 +3592,7 @@ const [confirmState, setConfirmState] = useState({
                                                                   <button
                                                                     onClick={() =>
                                                                       {
-                                                                        const confirm1 = confirm("Do you want to re-edit this product?")
-                                                                        if (confirm1) {
-                                                                          // 🔥 CHANGE 3: Set "Order Pending" (not "Artwork Pending"), and do NOT clear design files
-                                                                          const updates = {
-                                                                            orderStatus: "Order Pending",
-                                                                            designStatus: "approved",
-                                                                            designSharedMail: false,
-                                                                            _wasArtworkApproved: true, // 🔥 Flag to restore after save
-                                                                          };
-
-                                                                          updateOrderProductBatch(order.id, product.id, updates);
-                                                                          
-                                                                          console.log(`Product info: ${JSON.stringify(product, null, 2)}`);
-                                                                          
-                                                                         const stored = localStorage.getItem(STORAGE_KEY);
-                                                                        const orders = JSON.parse(stored || '[]');
-                                                                        
-                                                                        // Apply updates
-                                                                        const updatedOrders = orders.map(o => 
-                                                                          o.id === order.id 
-                                                                            ? { ...o, 
-                                                                                products: o.products.map(p => 
-                                                                                  p.id === product.id ? { ...p, ...updates } : p 
-                                                                                ) 
-                                                                              }
-                                                                            : o
-                                                                        );
-
-                                                                        // 🔥 SAVE back + trigger global update
-                                                                        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedOrders));
-                                                                        window.dispatchEvent(new Event('ordersUpdated'));
-
-                                                                        console.log('✅ Updates applied:', updates);
-
-                                                                        // 🔥 IMMEDIATE modal open with FRESH data from localStorage
-                                                                        setTimeout(() => {
-                                                                          const freshOrders = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-                                                                          const freshOrder = freshOrders.find(o => o.id === order.id);
-                                                                          const freshProduct = freshOrder?.products?.find(p => p.id === product.id);
-                                                                          
-                                                                          console.log('🔥 FRESH product:', freshProduct);
-                                                                          
-                                                                          // Now call handler with fresh data
-                                                                          handleEditRequest(freshOrder, freshProduct);
-                                                                        }, 50);  // Tiny delay ensures localStorage sync
-
-                                                                        }
+                                                                        setReEditConfirm({ isOpen: true, order, product });
                                                                     }
                                                                     }
                                                                     className="px-[1vw] py-[0.4vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 text-[.75vw] font-medium transition-all whitespace-pre"
@@ -3806,6 +3807,36 @@ const [confirmState, setConfirmState] = useState({
         onYes={confirmState.onYes}
         onNo={confirmState.onNo}
       />
+
+      {/* Re-Edit Confirm Modal */}
+      {reEditConfirm.isOpen && (
+        <div className="fixed inset-0 bg-[#000000b3] z-[60000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-sm w-full shadow-xl">
+            <div className="p-6">
+              <h2 className="text-[1.1vw] font-bold text-gray-800 mb-3">Re-Edit Product</h2>
+              <p className="text-[.9vw] text-gray-600 mb-6">
+                Do you want to set this product as <span className="font-semibold text-amber-600">'Order Pending'</span>?
+                <br />
+                <span className="text-[.8vw] text-gray-500">This will allow you to re-edit the product details.</span>
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setReEditConfirm({ isOpen: false, order: null, product: null })}
+                  className="px-5 py-2 text-[.85vw] cursor-pointer bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium transition-all"
+                >
+                  No, Cancel
+                </button>
+                <button
+                  onClick={handleReEditConfirm}
+                  className="px-5 py-2 text-[.85vw] cursor-pointer bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold transition-all"
+                >
+                  Yes, Set as Order Pending
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
  
     </div>
   );

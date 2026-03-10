@@ -36,16 +36,13 @@ const [pdfPreviews, setPdfPreviews] = useState({});
     return [];
   }
   
-  // Get the index of the current product
-  const currentIndex = order.products.findIndex(p => p.id === currentProductId);
-  
-  return order.products.filter((p, idx) => 
-    idx < currentIndex && // Only products with lower index (earlier in the list)
-    p.id !== currentProduct.id &&
+  return order.products.filter((p) => 
+    p.id !== currentProductId && // exclude itself
     p.productName === currentProduct.productName &&
     p.size === currentProduct.size &&
     p.imlType === currentProduct.imlType &&
     p.imlName === currentProduct.imlName
+    // no designSharedMail exclusion — shared-in-email designs are still linkable
   );
 };
 
@@ -53,10 +50,17 @@ const [pdfPreviews, setPdfPreviews] = useState({});
 const matchingProducts = findMatchingProductsInOrder(localProduct, modalOrder, localProduct.id);
 const hasMatchingProducts = matchingProducts.length > 0;
 
-// Check if design is approved and designSharedMail is false (showing approve date)
-const showLinkedDesignOption = hasMatchingProducts && 
-  localProduct.designStatus === "approved" && 
-  !localProduct.designSharedMail;
+// Current product already has its own design if file uploaded or existing design selected
+const currentProductHasDesign =
+  !!localProduct.lidDesignFile || !!localProduct.tubDesignFile ||
+  !!localProduct.lidSelectedOldDesign || !!localProduct.tubSelectedOldDesign ||
+  localProduct.designSharedMail === true;
+
+// Only show "Use same design as Product #N" when:
+// - there are matching products with same combo
+// - current product is NOT already linked
+// - current product does NOT already have its own design
+const showLinkedDesignOption = hasMatchingProducts && !localProduct.useLinkedDesign && !currentProductHasDesign;
 
 // NEW: Handle linked design toggle
 const handleLinkedDesignToggle = (checked) => {
@@ -111,26 +115,9 @@ const handleLinkedDesignToggle = (checked) => {
   }
 };
 
-const getDesignFingerprint = (p) => {
-  return [
-    p.designType || "",
-    p.lidDesignFile ? (p.lidDesignFile.name || "file") : "",
-    p.tubDesignFile ? (p.tubDesignFile.name || "file") : "",
-    p.lidSelectedOldDesign || "",
-    p.tubSelectedOldDesign || "",
-  ].join("|");
-};
 
-// Deduplicated unique design sources
-const uniqueDesignSources = [];
-const seenFingerprints = new Set();
-matchingProducts.forEach(mp => {
-  const fp = getDesignFingerprint(mp);
-  if (!seenFingerprints.has(fp)) {
-    seenFingerprints.add(fp);
-    uniqueDesignSources.push(mp);
-  }
-});
+// Show every matching product individually — no deduplication by design content
+const displaySources = matchingProducts;
 
 
 
@@ -138,21 +125,26 @@ const updateProductWithDesignStatus = useCallback((id, field, value) => {
   setLocalProduct((prev) => {
     const updates = { [field]: value };
 
-    // Auto-approve existing designs
+    // Auto-approve existing designs - but only if NOT currently Order Pending
+    // (Order Pending status change is controlled by the checkbox)
     if (
       field === "lidSelectedOldDesign" ||
       field === "tubSelectedOldDesign"
     ) {
       updates.designStatus = "approved";
-      updates.orderStatus = "Artwork Approved";
-      updates.approvedDate = getTodayDate();
+      if (prev.orderStatus !== "Order Pending") {
+        updates.orderStatus = "Artwork Approved";
+        updates.approvedDate = getTodayDate();
+      }
     }
     
-    // If uploading a new design file, auto-approve
+    // If uploading a new design file, auto-approve design status (but not orderStatus for Order Pending)
     if ((field === 'lidDesignFile' || field === 'tubDesignFile') && value) {
       updates.designStatus = 'approved';
-      updates.orderStatus = 'Artwork Approved';
-      updates.approvedDate = getTodayDate();
+      if (prev.orderStatus !== "Order Pending") {
+        updates.orderStatus = 'Artwork Approved';
+        updates.approvedDate = getTodayDate();
+      }
       
       // Clear the old design selection for the same part
       if (field === 'lidDesignFile') {
@@ -428,6 +420,21 @@ useEffect(() => {
 
 const isEditMode = sessionStorage.getItem("isEditMode") === "true";
 const isOrderPending = product.orderStatus === "Order Pending";
+
+// Track whether user wants to mark as Artwork Approved on submit
+const [markAsArtworkApproved, setMarkAsArtworkApproved] = useState(false);
+
+// Check if artwork is present in localProduct
+const artworkIsPresent = localProduct.useLinkedDesign
+  ? true
+  : localProduct.designType === "existing"
+    ? (!!localProduct.lidSelectedOldDesign || !!localProduct.tubSelectedOldDesign)
+    : (!!localProduct.lidDesignFile || !!localProduct.tubDesignFile);
+
+// Show the "Mark as Artwork Approved" checkbox only when:
+// - orderStatus is 'Order Pending'
+// - artwork is present (file uploaded or existing design selected)
+const showMarkApprovedCheckbox = isOrderPending && artworkIsPresent;
 
 // Track if "Save" was clicked while orderStatus is still "Order Pending"
 const [pendingSaved, setPendingSaved] = useState(false);
@@ -757,7 +764,7 @@ return (
           {/* NEW: Link to existing product checkbox - only show if design is approved and not shared in mail */}
 {showLinkedDesignOption && !localProduct.useLinkedDesign && (
   <div className="mb-[1vw] mt-[1.5vw] space-y-[0.6vw]">
-    {uniqueDesignSources.map((sourceProduct) => {
+    {displaySources.map((sourceProduct) => {
       const srcIndex = modalOrder.products.findIndex(p => p.id === sourceProduct.id) + 1;
       const designLabel = sourceProduct.designType === "existing"
         ? `Existing Design (${[sourceProduct.lidSelectedOldDesign, sourceProduct.tubSelectedOldDesign].filter(Boolean).join(", ") || "selected"})`
@@ -1666,6 +1673,22 @@ return (
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-3 p-6 border-t border-gray-300 bg-gray-50">
+        {/* Mark as Artwork Approved checkbox - only for Order Pending with artwork */}
+        {showMarkApprovedCheckbox && (
+          <div className="flex items-center gap-2 mr-auto">
+            <input
+              type="checkbox"
+              id="markArtworkApproved"
+              checked={markAsArtworkApproved}
+              onChange={(e) => setMarkAsArtworkApproved(e.target.checked)}
+              className="w-4 h-4 text-green-600 cursor-pointer"
+            />
+            <label htmlFor="markArtworkApproved" className="text-[.85vw] font-medium text-green-700 cursor-pointer">
+              Mark this product as <span className="font-bold">'Artwork Approved'</span>
+            </label>
+          </div>
+        )}
+
         <button
           onClick={() => {
             if (pendingSaved) {
@@ -1684,26 +1707,6 @@ return (
         >
           Delete
         </button>
-
-        {/* Save button - only when in edit mode and orderStatus is "Order Pending" */}
-        {isEditMode && isOrderPending && (
-          <button
-            onClick={() => {
-              // Save data but KEEP orderStatus as "Order Pending" - never advance it
-              // Also carry a flag so handleDirectSave knows NOT to override orderStatus
-              const productToSave = {
-                ...localProduct,
-                orderStatus: "Order Pending",
-                _keepOrderPending: true, // signal to handleDirectSave
-              };
-              handleSubmitRequest(productToSave);
-              setPendingSaved(true);
-            }}
-            className="px-6 py-2 bg-amber-500 text-white text-[.9vw] cursor-pointer rounded hover:bg-yellow-600 font-medium"
-          >
-            Save
-          </button>
-        )}
 
         <button
           onClick={() => {
@@ -1765,32 +1768,35 @@ return (
             if (validateChangeRequest(localProduct)) {
               setPendingSaved(false);
 
-              // ── Compute correct orderStatus based on actual design state ──
-              // Check if artwork is truly present
-              const hasArtwork = localProduct.useLinkedDesign
-                ? true // linked = design is inherited
-                : localProduct.designType === "existing"
-                  ? (!!localProduct.lidSelectedOldDesign || !!localProduct.tubSelectedOldDesign)
-                  : (!!localProduct.lidDesignFile || !!localProduct.tubDesignFile);
+              // For Order Pending products:
+              // - If markAsArtworkApproved checkbox is checked → set orderStatus to 'Artwork Approved'
+              // - If not checked → keep orderStatus as 'Order Pending'
+              let finalOrderStatus;
+              if (isOrderPending) {
+                finalOrderStatus = markAsArtworkApproved ? "Artwork Approved" : "Order Pending";
+              } else {
+                // ── Compute correct orderStatus based on actual design state ──
+                const hasArtwork = localProduct.useLinkedDesign
+                  ? true
+                  : localProduct.designType === "existing"
+                    ? (!!localProduct.lidSelectedOldDesign || !!localProduct.tubSelectedOldDesign)
+                    : (!!localProduct.lidDesignFile || !!localProduct.tubDesignFile);
 
-              // If designSharedMail=true OR no artwork → Artwork Pending
-              const artworkPending = localProduct.designSharedMail || !hasArtwork;
+                const artworkPending = localProduct.designSharedMail || !hasArtwork;
 
-              // PO/production statuses should never be downgraded
-              const advancedStatuses = [
-                "Production Pending", "Production In Progress",
-                "Production Done", "Dispatched",
-              ];
-              const isAdvanced = advancedStatuses.includes(localProduct.orderStatus);
+                const advancedStatuses = [
+                  "Production Pending", "Production In Progress",
+                  "Production Done", "Dispatched",
+                ];
+                const isAdvanced = advancedStatuses.includes(localProduct.orderStatus);
 
-              // "Order Pending" is overridden by Save Changes — it should resolve to artwork status
-              const finalOrderStatus = isAdvanced
-                ? localProduct.orderStatus
-                : artworkPending
-                  ? "Artwork Pending"
-                  : "Artwork Approved";
+                finalOrderStatus = isAdvanced
+                  ? localProduct.orderStatus
+                  : artworkPending
+                    ? "Artwork Pending"
+                    : "Artwork Approved";
+              }
 
-              // Pass _keepOrderPending=false explicitly so handleDirectSave knows to use computed status
               handleSubmitRequest({
                 ...localProduct,
                 orderStatus: finalOrderStatus,

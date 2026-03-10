@@ -4,6 +4,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 const STORAGE_KEY_ORDERS = "imlorders";
 const STORAGE_KEY_LABEL_QTY = "iml_label_quantity_received";
+const STORAGE_KEY_PO = "iml_purchase_po_details";
+
 
 // Order-level key for global completion
 const orderGlobalKey = (orderId) => `order_${orderId}_global`;
@@ -452,6 +454,16 @@ const LabelQuantitySheet = () => {
   const contactName = order.contact?.contactName || "N/A";
   const phone = order.contact?.phone || "N/A";
 
+  const getProductPOQty = (orderId, productId) => {
+  const storedPO = localStorage.getItem(STORAGE_KEY_PO);
+  if (!storedPO) return null;
+  const allPODetails = JSON.parse(storedPO);
+  const orderPO = allPODetails[orderId];
+  if (!orderPO || !orderPO.products) return null;
+  return orderPO.products[productId] || null;
+};
+
+
   return (
     <div className="min-h-screen bg-gray-50 p-[1vw]">
       <div className="max-w-[95vw] mx-auto bg-white rounded-[0.8vw] shadow-sm">
@@ -581,7 +593,7 @@ const LabelQuantitySheet = () => {
                     <h3 className="text-[1vw] font-semibold text-blue-900 mb-[1vw]">
                       Product details
                     </h3>
-                    <div className="grid grid-cols-3 gap-[1vw]">
+                    <div className="grid grid-cols-2 gap-[1vw]">
                       <div>
                         <label className="block text-[.75vw] font-medium text-gray-700 mb-[0.3vw]">
                           IML name
@@ -610,6 +622,21 @@ const LabelQuantitySheet = () => {
                             : currentProduct.imlType.includes("LID")
                             ? currentProduct.lidLabelQty || 0
                             : currentProduct.tubLabelQty || 0}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[.75vw] font-medium text-gray-700 mb-[0.3vw]">
+                          PO Qty
+                        </label>
+                        <div className="text-[.85vw] px-[0.75vw] py-[0.4vw] bg-yellow-100 border border-yellow-300 rounded-[0.4vw] font-bold text-yellow-800">
+                          {(() => {
+                            const poDetails = getProductPOQty(orderId, currentProduct.id);
+                            if (!poDetails) return "-";
+                            if (currentProduct.imlType === "LID & TUB") {
+                              return `LID: ${poDetails?.lid?.poQty || "-"} | TUB: ${poDetails?.tub?.poQty || "-"}`;
+                            }
+                            return poDetails?.poQty || "-";
+                          })()}
                         </div>
                       </div>
                     </div>

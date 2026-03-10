@@ -353,6 +353,7 @@ export default function NewOrder({
 
   const [highlightedErrors, setHighlightedErrors] = useState({});
   const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState("error"); // "error" | "success" | "info"
   const [showToast, setShowToast] = useState(false);
   const [currentErrorStep, setCurrentErrorStep] = useState(0);
   const [errorGroups, setErrorGroups] = useState([]);
@@ -687,8 +688,9 @@ useEffect(() => {
     return false;
   };
 
-  // Find matching products with same combo + has artwork + designSharedMail=false
-  // Bidirectional: any other product in the list (not just earlier ones)
+  // Find matching products with same combo (Product + Size + IML Type + IML Name)
+  // Show "Use same design" option even if the source has no artwork yet
+  // When source gets artwork approved, linked products auto-inherit it
   const findMatchingProducts = (currentProduct, currentIndex) => {
     if (!currentProduct.productName || !currentProduct.size || !currentProduct.imlType || !currentProduct.imlName) {
       return [];
@@ -698,22 +700,57 @@ useEffect(() => {
       p.productName === currentProduct.productName &&
       p.size === currentProduct.size &&
       p.imlType === currentProduct.imlType &&
-      p.imlName === currentProduct.imlName &&
-      !p.designSharedMail && // design NOT shared in mail
-      (!!p.lidDesignFile || !!p.tubDesignFile || !!p.lidSelectedOldDesign || !!p.tubSelectedOldDesign) // has artwork
+      p.imlName === currentProduct.imlName
+      // designSharedMail is intentionally NOT excluded — if a source product's
+      // design was shared in email, linked products should still be able to use it
     );
   };
 
-  // Helper: get a design fingerprint to deduplicate unique designs
-  const getDesignFingerprint = (p) => {
-    return [
-      p.designType || "",
-      p.lidDesignFile ? (p.lidDesignFile.name || "file") : "",
-      p.tubDesignFile ? (p.tubDesignFile.name || "file") : "",
-      p.lidSelectedOldDesign || "",
-      p.tubSelectedOldDesign || "",
-    ].join("|");
-  };
+  // Stable string key tracking design state across all products (used by auto-sync effect)
+  // Computed inline here so it's available as a dep without calling map() in the dep array
+  const productDesignKey = products
+    .map(p => `${p.id}:${p.lidDesignFile?.name ?? ''}:${p.tubDesignFile?.name ?? ''}:${p.lidSelectedOldDesign ?? ''}:${p.tubSelectedOldDesign ?? ''}:${p.designStatus ?? ''}:${p.orderStatus ?? ''}`)
+    .join('|');
+
+  // NEW: Auto-sync linked products when source product's design is updated/approved
+  useEffect(() => {
+    setProducts(prevProducts => {
+      let changed = false;
+      const updated = prevProducts.map(p => {
+        if (!p.useLinkedDesign || !p.linkedDesignSource) return p;
+        const source = prevProducts.find(src => src.id === p.linkedDesignSource.productId);
+        if (!source) return p;
+        const sourceHasArtwork = !!(source.lidDesignFile || source.tubDesignFile || source.lidSelectedOldDesign || source.tubSelectedOldDesign);
+        if (!sourceHasArtwork) return p;
+        const alreadySynced =
+          p.designType === source.designType &&
+          p.lidDesignFile === source.lidDesignFile &&
+          p.tubDesignFile === source.tubDesignFile &&
+          p.lidSelectedOldDesign === source.lidSelectedOldDesign &&
+          p.tubSelectedOldDesign === source.tubSelectedOldDesign &&
+          p.designStatus === source.designStatus &&
+          p.orderStatus === source.orderStatus;
+        if (alreadySynced) return p;
+        changed = true;
+        return {
+          ...p,
+          designType: source.designType,
+          lidDesignFile: source.lidDesignFile,
+          lidSelectedOldDesign: source.lidSelectedOldDesign,
+          tubDesignFile: source.tubDesignFile,
+          tubSelectedOldDesign: source.tubSelectedOldDesign,
+          designStatus: source.designStatus,
+          orderStatus: source.orderStatus,
+          approvedDate: source.approvedDate,
+          designSharedMail: source.designSharedMail,
+          singleImlDesign: source.singleImlDesign,
+        };
+      });
+      return changed ? updated : prevProducts;
+    });
+  // productDesignKey is a stable string derived from products array - safe dep
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productDesignKey]);
 
   // NEW: Handle linked design toggle
   const handleLinkedDesignToggle = (productId, checked, sourceProductId) => {
@@ -823,6 +860,61 @@ useEffect(() => {
       setCurrentErrorStep(0);
 
       return newProducts;
+    });
+  }, []);
+
+  // Check if a product card is fully filled — used to gate the Duplicate button
+  const isProductComplete = (product) => {
+    if (!product.productName || !product.size || !product.imlType) return false;
+    if (!product.imlName?.trim()) return false;
+
+    // ── Design check ──
+    if (!product.useLinkedDesign && !product.designSharedMail && product.designStatus === "approved") {
+      if (product.imlType === "LID & TUB") {
+        const hasLid = !!product.lidDesignFile || !!product.lidSelectedOldDesign;
+        const hasTub = !!product.tubDesignFile || !!product.tubSelectedOldDesign;
+        const ok = product.singleImlDesign ? (hasLid || hasTub) : (hasLid && hasTub);
+        if (!ok) return false;
+      } else if (product.imlType === "LID") {
+        if (!product.lidDesignFile && !product.lidSelectedOldDesign) return false;
+      } else if (product.imlType === "TUB") {
+        if (!product.lidDesignFile && !product.tubDesignFile && !product.lidSelectedOldDesign && !product.tubSelectedOldDesign) return false;
+      }
+    }
+
+    // ── Quantity check ──
+    if (product.imlType === "LID & TUB") {
+      const hasLidQty = product.lidLabelQty?.trim() && parseInt(product.lidLabelQty) > 0;
+      const hasTubQty = product.tubLabelQty?.trim() && parseInt(product.tubLabelQty) > 0;
+      if (!hasLidQty && !hasTubQty) return false;
+      if (hasLidQty && !product.lidProductionQty?.trim()) return false;
+      if (hasTubQty && !product.tubProductionQty?.trim()) return false;
+    } else if (product.imlType === "LID") {
+      if (!product.lidLabelQty?.trim() || parseInt(product.lidLabelQty) <= 0) return false;
+      if (!product.lidProductionQty?.trim()) return false;
+    } else if (product.imlType === "TUB") {
+      if (!product.tubLabelQty?.trim() || parseInt(product.tubLabelQty) <= 0) return false;
+      if (!product.tubProductionQty?.trim()) return false;
+    }
+
+    return true;
+  };
+
+  // Duplicate product - copies all fields except id and resets collapse state
+  const duplicateProduct = useCallback((sourceId) => {
+    setProducts((prevProducts) => {
+      const source = prevProducts.find(p => p.id === sourceId);
+      if (!source) return prevProducts;
+      const duplicate = {
+        ...source,
+        id: `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        isCollapsed: false,
+        useLinkedDesign: false,
+        linkedDesignSource: null,
+      };
+      // Collapse all existing products
+      const withCollapsed = prevProducts.map(p => ({ ...p, isCollapsed: true }));
+      return [...withCollapsed, duplicate];
     });
   }, []);
 
@@ -992,7 +1084,7 @@ useEffect(() => {
       onSubmit(orderData);
     } else {
       console.log(orderData);
-      alert("Form submitted successfully!");
+      generalToast("Form submitted successfully!", "success");
     }
   };
 
@@ -1290,14 +1382,18 @@ useEffect(() => {
       file: null,
     });
 
-    alert("Payment record added successfully!");
+    generalToast("Payment record added successfully!", "success");
     setShowPaymentModal(false);
   };
 
   const removePaymentRecord = (recordId) => {
-    if (confirm("Are you sure you want to remove this payment record?")) {
-      setPaymentRecords(paymentRecords.filter((r) => r.id !== recordId));
-    }
+    setRemovePaymentConfirm({ open: true, recordId });
+  };
+
+  const confirmRemovePaymentRecord = () => {
+    setPaymentRecords(prev => prev.filter((r) => r.id !== removePaymentConfirm.recordId));
+    setRemovePaymentConfirm({ open: false, recordId: null });
+    generalToast("Payment record removed.", "success");
   };
 
   const getProductPayment = (productId) => {
@@ -1345,6 +1441,7 @@ useEffect(() => {
 
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [pendingNavAction, setPendingNavAction] = useState(null); // 'back' | 'cancel'
+  const [removePaymentConfirm, setRemovePaymentConfirm] = useState({ open: false, recordId: null });
 
   const hasUnsavedChanges = () => {
     const isContactFilled =
@@ -1642,8 +1739,9 @@ const validateForm = useCallback(() => {
     setIsFormValid(false);
   }, [products]);
 
-  function generalToast(message) {
+  function generalToast(message, type = "error") {
     setToastMessage(message);
+    setToastType(type);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 5000);
   }
@@ -1817,22 +1915,21 @@ useEffect(() => {
             const matchingProducts = findMatchingProducts(product, index);
             const hasMatchingProducts = matchingProducts.length > 0;
 
-            // Current product has no artwork yet (so it can borrow from another)
-            const currentHasArtwork = !!(product.lidDesignFile || product.tubDesignFile || product.lidSelectedOldDesign || product.tubSelectedOldDesign);
+            // Current product already has a design if a file is uploaded or existing design selected
+            const currentProductHasDesign =
+              !!product.lidDesignFile || !!product.tubDesignFile ||
+              !!product.lidSelectedOldDesign || !!product.tubSelectedOldDesign ||
+              product.designSharedMail === true;
 
-            // Show linked design checkboxes only when current has NO artwork and there are matches with artwork
-            const showLinkedDesignOption = hasMatchingProducts && !currentHasArtwork && !product.useLinkedDesign;
+            // Only show "Use same design as Product #N" when:
+            // - there are matching products with same combo
+            // - current product is NOT already linked
+            // - current product does NOT already have its own design uploaded/selected
+            const showLinkedDesignOption = hasMatchingProducts && !product.useLinkedDesign && !currentProductHasDesign;
 
-            // Get unique design sources (deduplicated by fingerprint)
-            const uniqueDesignSources = [];
-            const seenFingerprints = new Set();
-            matchingProducts.forEach(mp => {
-              const fp = getDesignFingerprint(mp);
-              if (!seenFingerprints.has(fp)) {
-                seenFingerprints.add(fp);
-                uniqueDesignSources.push(mp);
-              }
-            });
+            // Show every matching product individually — no deduplication by design content.
+            // Each product gets its own "Use same design as Product #N" entry.
+            const displaySources = matchingProducts;
             
             return (
             <div key={product.id} className="mt-[1vw]">
@@ -1848,21 +1945,38 @@ useEffect(() => {
                           }`
                         : `Order & Design Details ${index + 1}`}
                     </span>
-                    <svg
-                      className={`w-[1.2vw] h-[1.2vw] transition-transform duration-200 ${
-                        product.isCollapsed ? "rotate-180" : ""
-                      }`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
+                    <div className="flex items-center gap-[0.75vw]">
+                      {isProductComplete(product) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            duplicateProduct(product.id);
+                          }}
+                          className="px-[0.75vw] py-[0.3vw] bg-white text-blue-700 border border-blue-300 rounded text-[0.75vw] font-semibold hover:bg-blue-50 transition-all cursor-pointer flex items-center gap-[0.3vw]"
+                          title="Duplicate this product"
+                        >
+                          <svg className="w-[0.9vw] h-[0.9vw]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Duplicate Product
+                        </button>
+                      )}
+                      <svg
+                        className={`w-[1.2vw] h-[1.2vw] transition-transform duration-200 ${
+                          product.isCollapsed ? "rotate-180" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
                   </div>
                 }
                 onClick={() => toggleCollapse(product.id)}
@@ -2419,10 +2533,10 @@ useEffect(() => {
                         </label>
                       )}
 
-                      {/* NEW: Link to existing product checkbox - show one per unique design */}
+                      {/* Link to existing product — one checkbox per matching product */}
                       {showLinkedDesignOption && (
                         <div className="mb-[1vw] mt-[1.5vw] space-y-[0.6vw]">
-                          {uniqueDesignSources.map((sourceProduct) => {
+                          {displaySources.map((sourceProduct) => {
                             const srcIndex = products.findIndex(p => p.id === sourceProduct.id) + 1;
                             const designLabel = sourceProduct.designType === "existing"
                               ? `Existing Design (${[sourceProduct.lidSelectedOldDesign, sourceProduct.tubSelectedOldDesign].filter(Boolean).join(", ") || "selected"})`
@@ -3207,6 +3321,7 @@ useEffect(() => {
                                           productId={`${product.id}-lid`}
                                           small
                                           disabled={product.useLinkedDesign}
+                                          onError={generalToast}
                                         />
                                       </div>
                                       <div>
@@ -3251,6 +3366,7 @@ useEffect(() => {
                                             productId={`${product.id}-tub`}
                                             small
                                             disabled={product.useLinkedDesign}
+                                            onError={generalToast}
                                           />
                                         </div>
                                         <div>
@@ -3297,6 +3413,7 @@ useEffect(() => {
                                         productId={product.id}
                                         small
                                         disabled={product.useLinkedDesign}
+                                        onError={generalToast}
                                       />
                                     </div>
                                     <div>
@@ -3675,28 +3792,71 @@ useEffect(() => {
         addPaymentRecord={addPaymentRecord}
         calculateTotals={calculateTotals}
       />
-      {showToast && (
-        <div className="fixed top-4 right-4 z-50 bg-white border-red-500 border-[0.2vw] text-white p-4 rounded-lg shadow-xl animate-in slide-in-from-right-2 fade-in duration-300 max-w-md">
-          <div className="flex items-start gap-3">
-            {/* Icon */}
-            <div className="flex-shrink-0 text-red-500">
-              <svg
-                className="w-[1.25vw] h-[1.25vw]"
-                fill="currentColor"
-                viewBox="0 0 20 20"
+      {/* Remove Payment Confirm Modal */}
+      {removePaymentConfirm.open && (
+        <div className="fixed inset-0 bg-[#000000ba] z-[9999] flex items-center justify-center p-[1vw]">
+          <div className="bg-white rounded-xl shadow-2xl max-w-[26vw] w-full overflow-hidden">
+            <div className="flex items-center gap-3 px-[1.5vw] py-[1.25vw] border-b border-gray-200 bg-red-50">
+              <div className="flex-shrink-0 w-[2.5vw] h-[2.5vw] rounded-full bg-red-100 flex items-center justify-center">
+                <svg className="w-[1.4vw] h-[1.4vw] text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <h3 className="text-[1.05vw] font-bold text-gray-800">Remove Payment Record</h3>
+            </div>
+            <div className="px-[1.5vw] py-[1.25vw]">
+              <p className="text-[0.9vw] text-gray-600">Are you sure you want to remove this payment record? This action cannot be undone.</p>
+            </div>
+            <div className="flex justify-end gap-[0.75vw] px-[1.5vw] py-[1vw] bg-gray-50 border-t border-gray-200">
+              <button
+                onClick={() => setRemovePaymentConfirm({ open: false, recordId: null })}
+                className="px-[1.25vw] py-[0.55vw] text-[0.85vw] font-medium border-2 border-gray-300 text-gray-700 bg-white rounded-[0.5vw] cursor-pointer hover:bg-gray-100 transition-all"
               >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                />
-              </svg>
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemovePaymentRecord}
+                className="px-[1.25vw] py-[0.55vw] text-[0.85vw] font-semibold bg-red-500 text-white rounded-[0.5vw] cursor-pointer hover:bg-red-600 transition-all shadow-md"
+              >
+                Yes, Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showToast && (
+        <div className={`fixed top-4 right-4 z-[99999] bg-white border-[0.18vw] p-4 pr-10 rounded-lg shadow-2xl max-w-md min-w-[20vw] ${
+          toastType === "success"
+            ? "border-green-500"
+            : toastType === "info"
+            ? "border-blue-500"
+            : "border-red-500"
+        }`}>
+          <div className="flex items-start gap-3">
+            {/* Type Icon */}
+            <div className={`flex-shrink-0 mt-[0.05vw] ${
+              toastType === "success" ? "text-green-500" : toastType === "info" ? "text-blue-500" : "text-red-500"
+            }`}>
+              {toastType === "success" ? (
+                <svg className="w-[1.25vw] h-[1.25vw]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
+                </svg>
+              ) : toastType === "info" ? (
+                <svg className="w-[1.25vw] h-[1.25vw]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" />
+                </svg>
+              ) : (
+                <svg className="w-[1.25vw] h-[1.25vw]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" />
+                </svg>
+              )}
             </div>
 
             {/* Message with highlighted prefix */}
-            <p className="text-[.8vw] font-medium flex-1 text-black mt-[-.15vw]">
+            <p className="text-[.8vw] font-medium flex-1 text-gray-800 leading-snug">
               {(() => {
                 const msg = toastMessage;
+                if (toastType !== "error") return msg;
                 // Pattern: "Required - Product #N:" → highlight that whole prefix
                 const prodMatch = msg.match(/^(Required - Product #\d+:)([\s\S]*)$/);
                 if (prodMatch) {
@@ -3707,7 +3867,7 @@ useEffect(() => {
                     </>
                   );
                 }
-                // Pattern: "Required - Contact Details:" → highlight "Required"
+                // Pattern: "Required - …" → highlight "Required"
                 const contactMatch = msg.match(/^(Required)([\s\S]*)$/);
                 if (contactMatch) {
                   return (
@@ -3717,7 +3877,7 @@ useEffect(() => {
                     </>
                   );
                 }
-                // Pattern: "Payment: …" → highlight "Payment:"
+                // Pattern: "Payment: …"
                 const paymentMatch = msg.match(/^(Payment:)([\s\S]*)$/);
                 if (paymentMatch) {
                   return (
@@ -3727,7 +3887,7 @@ useEffect(() => {
                     </>
                   );
                 }
-                // Pattern: "Order Estimate: …" → highlight "Order Estimate:"
+                // Pattern: "Order Estimate: …"
                 const estimateMatch = msg.match(/^(Order Estimate:)([\s\S]*)$/);
                 if (estimateMatch) {
                   return (
@@ -3737,18 +3897,18 @@ useEffect(() => {
                     </>
                   );
                 }
-                // Fallback: plain text
                 return msg;
               })()}
             </p>
           </div>
 
-          {/* Close Button */}
+          {/* Close × button - top right */}
           <button
             onClick={() => setShowToast(false)}
-            className="absolute bottom-[8%] right-[4%] text-gray-400 hover:text-gray-700 text-[.85vw] font-semibold cursor-pointer"
+            className="absolute top-[0.5vw] right-[0.5vw] w-[1.4vw] h-[1.4vw] flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-all cursor-pointer text-[1vw] font-bold leading-none"
+            title="Close"
           >
-            Close
+            ×
           </button>
         </div>
       )}
@@ -3855,7 +4015,7 @@ function DesignPreview({ file, productId, pdfPreviews, setPreviewModal }) {
 }
 
 // File Upload Component (same as before - keeping your existing implementation)
-function FileUploadBox({ file, onFileChange, productId, small, disabled }) {
+function FileUploadBox({ file, onFileChange, productId, small, disabled, onError }) {
   const [isDragging, setIsDragging] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [fileType, setFileType] = useState(null);
@@ -3927,7 +4087,8 @@ function FileUploadBox({ file, onFileChange, productId, small, disabled }) {
       if (allowedTypes.includes(droppedFile.type)) {
         handleFileChange(droppedFile);
       } else {
-        alert("Please upload only images (JPEG, PNG, GIF, WebP) or PDF files");
+        if (onError) onError("Please upload only images (JPEG, PNG, GIF, WebP) or PDF files");
+        else console.warn("Invalid file type dropped");
       }
     }
   };

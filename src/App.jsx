@@ -1,18 +1,18 @@
 import { Routes, Route, Navigate  } from "react-router-dom";
 import { useEffect } from "react";
 import MainLayout from "./layout/MainLayout";
-import NewOrder from "./pages/IML/OrderManagement/NewOrder";
+
 import ScrollToTop from "./ScrollToTop";
 import LoginPage from './pages/LoginPage';
+
+import { ToastProvider } from "./components/ToastContext";
 
 // Overview
 import Overview from './pages/Overview'
 
 // IML PAGES IMPORT
 // order management
-import OrdersManagement from "./pages/IML/OrderManagement/OrdersManagement";
 import OrdersManagementN from "./pages/IML/OrderNew/OrdersManagement";
-import OrdersManagement2 from "./pages/IML/OrderManagement/OrdersManagement2";
 // purchase management
 import PurchaseDetails2 from "./pages/IML/PurchaseManagement/PurchaseDetails2";
 import PODetails from "./pages/IML/PurchaseManagement/PODetails";
@@ -25,8 +25,7 @@ import ProductionDetails2 from "./pages/IML/ProductionManagement/ProductionDetai
 import InventoryManagement3 from "./pages/IML/InventoryManagement/InventoryManagement3";
 import InventoryDetails3 from "./pages/IML/InventoryManagement/InventoryDetails3";
 // Sales payment management
-import SalesPayment from "./pages/IML/SalesPaymentManagement/SalesPayment";
-import SalesPaymentDetails from "./pages/IML/SalesPaymentManagement/SalesPaymentDetails";
+
 import SalesPayment2 from "./pages/IML/SalesPaymentManagement/SalesPayment2";
 import SalesPaymentDetails2 from "./pages/IML/SalesPaymentManagement/SalesPaymentDetails2";
 // Billings management
@@ -88,83 +87,84 @@ function App() {
     <>
       <ScrollToTop />   {/* ✅ Correct: OUTSIDE Routes */}
 
-      <Routes>
-        <Route path="/" element={<MainLayout />}>
+      <ToastProvider>
 
-          {/* ✅ Default redirect */}
-          <Route index element={<Navigate to="iml/new-order" replace />} />
+        <Routes>
+          <Route path="/" element={<MainLayout />}>
 
-          {/* Overview */}
-          <Route path='overview' element={<Overview />} />
-          
-          {/* IML Routes */}
-          {/* New order management */}
-          <Route path="iml/new-order" element={<OrdersManagementN />} />
-          <Route path="iml/new-order2" element={<OrdersManagement2 />} />
-          <Route path="iml/new-order3" element={<OrdersManagement />} />
+            {/* ✅ Default redirect */}
+            <Route index element={<Navigate to="iml/new-order" replace />} />
 
-          {/* Purchase Management */}
-          <Route path="iml/purchase" element={<PurchaseDetails2 />} />
-          <Route path="iml/purchase/po-details" element={<PODetails />} />
-          <Route path="iml/purchase/label-quantity-sheet" element={<LabelQuantitySheet />} />
-          
-          {/* Production Management */}
-          <Route path="iml/production" element={<ProductionManagement2 />} />
-          <Route path="iml/production/details" element={<ProductionDetails2 />} />
-          
-          {/* Inventory Management */}          
-          {/* <Route path="iml/inventory" element={<InventoryManagement2 />} />
-          <Route path="iml/inventory/details" element={<InventoryDetails2 />} /> */}
-          <Route path="iml/inventory" element={<InventoryManagement3 />} />
-          <Route path="iml/inventory/details" element={<InventoryDetails3 />} />
+            {/* Overview */}
+            <Route path='overview' element={<Overview />} />
+            
+            {/* IML Routes */}
+            {/* New order management */}
+            <Route path="iml/new-order" element={<OrdersManagementN />} />
+            
 
-          {/* Sales payment management */}
-          {/* <Route path="iml/sales" element={<SalesPayment />} />
-          <Route path="iml/sales-details" element={<SalesPaymentDetails />} /> */}
-          <Route path="iml/sales" element={<SalesPayment2 />} />
-          <Route path="iml/sales-payment/details" element={<SalesPaymentDetails2 />} />
+            {/* Purchase Management */}
+            <Route path="iml/purchase" element={<PurchaseDetails2 />} />
+            <Route path="iml/purchase/po-details" element={<PODetails />} />
+            <Route path="iml/purchase/label-quantity-sheet" element={<LabelQuantitySheet />} />
+            
+            {/* Production Management */}
+            <Route path="iml/production" element={<ProductionManagement2 />} />
+            <Route path="iml/production/details" element={<ProductionDetails2 />} />
+            
+            {/* Inventory Management */}          
+            {/* <Route path="iml/inventory" element={<InventoryManagement2 />} />
+            <Route path="iml/inventory/details" element={<InventoryDetails2 />} /> */}
+            <Route path="iml/inventory" element={<InventoryManagement3 />} />
+            <Route path="iml/inventory/details" element={<InventoryDetails3 />} />
 
-
-          {/* Billing Management */}
-          <Route path="iml/billingManagement" element={<BillingManagement />} />
-          <Route path="iml/billing-details" element={<BillingDetails />} />
-          {/* Dispatch Management */}
-          <Route path="iml/dispatchManagement" element={<DispatchManagement />} />
-          <Route path="iml/dispatch-details" element={<DispatchDetails />} />
-          {/* IML Stocks */}
-          <Route path="iml/stocks" element={<IMLStocks />} />
+            {/* Sales payment management */}
+            
+            <Route path="iml/sales" element={<SalesPayment2 />} />
+            <Route path="iml/sales-payment/details" element={<SalesPaymentDetails2 />} />
 
 
-          {/* Screen Printing Routes */}
-          {/* Order Management */}
-          <Route path="screen-printing/orders" element={<ScreenPrintingOrders />} />
-          <Route path="screen-printing/order-details" element={<ScreenPrintingOrderDetails />} />
-          {/* Screen Printing - Job Work / Goods Returned */}
-          <Route path="screen-printing/jobwork" element={<ScreenPrintingJobWork />} />
-          <Route path="screen-printing/jobwork-details" element={<JobWorkDetails />} />
-          <Route path="screen-printing/goods-returned" element={<GoodsReturned />} />
-          
-          {/* Screen Printing Stocks */}
-          <Route path="screen-printing/stocks" element={<ScreenPrintingStocks />} />
-          <Route path="screen-printing/stocks/details" element={<StocksDetails />} />
-          {/* Sales Payment Management */}
-          <Route path="screen-printing/sales-payment" element={<ScreenSalesPayment />} />
-          <Route path="screen-printing/sales-payment/details" element={<ScreenSalesPaymentDetails />} />
-          {/* Billing Management */}
-          <Route path="screen-printing/billing" element={<ScreenBilling />} />
-          <Route path="screen-printing/billing/details" element={<ScreenBillingDetails />} />
-          {/* Dispatch Management */}
-          <Route path="screen-printing/dispatch" element={<ScreenDispatch />} />
-          <Route path="screen-printing/dispatch/details" element={<ScreenDispatchDetails />} />
-          
+            {/* Billing Management */}
+            <Route path="iml/billingManagement" element={<BillingManagement />} />
+            <Route path="iml/billing-details" element={<BillingDetails />} />
+            {/* Dispatch Management */}
+            <Route path="iml/dispatchManagement" element={<DispatchManagement />} />
+            <Route path="iml/dispatch-details" element={<DispatchDetails />} />
+            {/* IML Stocks */}
+            <Route path="iml/stocks" element={<IMLStocks />} />
 
-          {/* Stock - Plain box */}
-          <Route path="stock" element={<Stock />} />
-          {/* Reports */}
-          <Route path="reports" element={<Reports />} />
-        </Route>
-        <Route path="/login" element={<LoginPage />} />
-      </Routes>
+
+            {/* Screen Printing Routes */}
+            {/* Order Management */}
+            <Route path="screen-printing/orders" element={<ScreenPrintingOrders />} />
+            <Route path="screen-printing/order-details" element={<ScreenPrintingOrderDetails />} />
+            {/* Screen Printing - Job Work / Goods Returned */}
+            <Route path="screen-printing/jobwork" element={<ScreenPrintingJobWork />} />
+            <Route path="screen-printing/jobwork-details" element={<JobWorkDetails />} />
+            <Route path="screen-printing/goods-returned" element={<GoodsReturned />} />
+            
+            {/* Screen Printing Stocks */}
+            <Route path="screen-printing/stocks" element={<ScreenPrintingStocks />} />
+            <Route path="screen-printing/stocks/details" element={<StocksDetails />} />
+            {/* Sales Payment Management */}
+            <Route path="screen-printing/sales-payment" element={<ScreenSalesPayment />} />
+            <Route path="screen-printing/sales-payment/details" element={<ScreenSalesPaymentDetails />} />
+            {/* Billing Management */}
+            <Route path="screen-printing/billing" element={<ScreenBilling />} />
+            <Route path="screen-printing/billing/details" element={<ScreenBillingDetails />} />
+            {/* Dispatch Management */}
+            <Route path="screen-printing/dispatch" element={<ScreenDispatch />} />
+            <Route path="screen-printing/dispatch/details" element={<ScreenDispatchDetails />} />
+            
+
+            {/* Stock - Plain box */}
+            <Route path="stock" element={<Stock />} />
+            {/* Reports */}
+            <Route path="reports" element={<Reports />} />
+          </Route>
+          <Route path="/login" element={<LoginPage />} />
+        </Routes>
+      </ToastProvider>
     </>
   );
 }

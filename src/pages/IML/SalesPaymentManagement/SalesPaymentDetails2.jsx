@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
+
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../../../components/ToastContext";
+
 
 // Storage keys
 const SALES_PAYMENT_STORAGE_KEY = "iml_sales_payment_data";
@@ -17,6 +20,96 @@ const PaymentModal = ({
   calculateTotals,
 }) => {
   if (!showPaymentModal) return null;
+
+  const [pdfPreviews, setPdfPreviews] = useState({});
+
+  
+  // ✅ FIX 1: Add the missing previewModal state
+  const [previewModal, setPreviewModal] = useState({
+    isOpen: false,
+    type: null,
+    path: null,
+    name: null,
+  });
+
+  
+  // ✅ FIX 2: Add the missing ref
+  const previewModalRef = React.useRef(null);
+
+   const PreviewModal = () => {
+    if (!previewModal.isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-[#00000000] bg-opacity-70 z-50 flex items-center justify-center p-4">
+        <div
+          ref={previewModalRef}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="bg-white rounded-lg overflow-hidden max-w-6xl w-full max-h-[90vh] flex flex-col"
+        >
+          <div className="flex items-center justify-between p-4 border-b border-gray-300 bg-gray-50">
+            <h2 className="text-[1.25vw] font-semibold text-gray-800">
+              Preview: {previewModal.name}
+            </h2>
+            <button
+              onClick={() =>
+                setPreviewModal({
+                  isOpen: false,
+                  type: null,
+                  path: null,
+                  name: null,
+                })
+              }
+              className="text-gray-500 hover:text-gray-800 text-[2vw] font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+            {previewModal.type === "pdf" ? (
+              <iframe
+                src={`${previewModal.path}#toolbar=1&navpanes=0`}
+                title={previewModal.name}
+                className="w-full h-full border-0"
+                style={{ minHeight: "60vh" }}
+              />
+            ) : (
+              <img
+                src={previewModal.path}
+                alt={previewModal.name}
+                className="max-w-full max-h-[70vh] object-contain"
+              />
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-300 bg-gray-50">
+            <button
+              onClick={() =>
+                setPreviewModal({
+                  isOpen: false,
+                  type: null,
+                  path: null,
+                  name: null,
+                })
+              }
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-[0.4vw] cursor-pointer hover:bg-gray-400 hover:text-white font-medium text-[0.9vw]"
+            >
+              Close
+            </button>
+            <a
+              href={previewModal.path}
+              download={previewModal.name}
+              className="px-4 py-2 bg-blue-600 text-white rounded-[0.4vw] hover:bg-blue-700 font-medium text-[0.9vw]"
+            >
+              Download
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+
 
   const FileUploadBox = ({ file, onFileChange, productId, small }) => {
     const [isDragging, setIsDragging] = useState(false);
@@ -257,6 +350,120 @@ const PaymentModal = ({
     );
   };
 
+
+
+const generatePdfThumbnail = async (file, previewId) => {
+    try {
+      const fileReader = new FileReader();
+
+      fileReader.onload = async function () {
+        try {
+          const typedArray = new Uint8Array(this.result);
+          const loadingTask = pdfjsLib.getDocument({
+            data: typedArray,
+            cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+            cMapPacked: true,
+          });
+
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport,
+          };
+
+          await page.render(renderContext).promise;
+          const thumbnailUrl = canvas.toDataURL("image/png");
+
+          setPdfPreviews((prev) => ({
+            ...prev,
+            [previewId]: thumbnailUrl,
+          }));
+        } catch (error) {
+          console.error("Error rendering PDF:", error);
+          setPdfPreviews((prev) => ({
+            ...prev,
+            [previewId]: "error",
+          }));
+        }
+      };
+
+      fileReader.onerror = function (error) {
+        console.error("FileReader error:", error);
+      };
+
+      fileReader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error("Error generating PDF thumbnail:", error);
+    }
+  };
+
+  const generatePdfThumbnailFromUrl = async (pdfUrl, previewId) => {
+    try {
+      const response = await fetch(pdfUrl);
+      const blob = await response.blob();
+
+      const fileReader = new FileReader();
+
+      fileReader.onload = async function () {
+        try {
+          const typedArray = new Uint8Array(this.result);
+          const loadingTask = pdfjsLib.getDocument({
+            data: typedArray,
+            cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+            cMapPacked: true,
+          });
+
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport,
+          };
+
+          await page.render(renderContext).promise;
+          const thumbnailUrl = canvas.toDataURL("image/png");
+
+          setPdfPreviews((prev) => ({
+            ...prev,
+            [previewId]: thumbnailUrl,
+          }));
+        } catch (error) {
+          console.error("Error rendering PDF:", error);
+          setPdfPreviews((prev) => ({
+            ...prev,
+            [previewId]: "error",
+          }));
+        }
+      };
+
+      fileReader.onerror = function (error) {
+        console.error("FileReader error:", error);
+      };
+
+      fileReader.readAsArrayBuffer(blob);
+    } catch (error) {
+      console.error("Error fetching PDF:", error);
+    }
+  };
+
+
   return (
     <div className="fixed inset-0 bg-[#000000ba] z-50 flex items-center justify-center p-[1vw]">
       <div className="bg-white rounded-lg overflow-hidden max-w-[60%] w-full max-h-[80vh] flex flex-col">
@@ -356,7 +563,7 @@ const PaymentModal = ({
 
                 <div>
                   <label className="block text-[0.9vw] font-medium text-gray-700 mb-1">
-                    Payment Reference / Remarks
+                    Payment Reference / Remarks <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     placeholder="Enter payment reference, transaction ID, or notes..."
@@ -374,16 +581,27 @@ const PaymentModal = ({
 
                 <div>
                   <label className="block text-[0.9vw] font-medium text-gray-700 mb-1">
-                    Upload Proof (Screenshot/Receipt)
+                    Upload Proof (Screenshot/Receipt) <span className="text-red-500">*</span>
                   </label>
-                  <FileUploadBox
-                    file={bulkPayment.file}
-                    onFileChange={(file) => {
-                      setBulkPayment({ ...bulkPayment, file });
-                    }}
-                    productId="billing-payment"
-                    small
-                  />
+                  <div className="grid grid-cols-2 gap-[1vw]">
+
+                    <FileUploadBox
+                      file={bulkPayment.file}
+                      onFileChange={(file) => {
+                        setBulkPayment({ ...bulkPayment, file });
+                      }}
+                      productId="billing-payment"
+                      small
+                    />
+                    {bulkPayment.file && (
+                      <DesignPreview
+                        file={bulkPayment.file}
+                        productId={null}
+                        pdfPreviews={pdfPreviews}
+                        setPreviewModal={setPreviewModal}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -462,7 +680,6 @@ const PaymentModal = ({
           <button
             onClick={() => {
               addPaymentRecord();
-              setShowPaymentModal(false);
             }}
             className="px-[0.8vw] py-[0.4vw] text-[0.9vw] cursor-pointer bg-green-600 text-white rounded font-semibold hover:bg-green-700 transition-all shadow-md"
           >
@@ -470,16 +687,117 @@ const PaymentModal = ({
           </button>
         </div>
       </div>
+      <PreviewModal />
     </div>
   );
 };
 
+// Design Preview Component (NEW)
+function DesignPreview({ file, productId, pdfPreviews, setPreviewModal }) {
+  return (
+    <div className="p-[1vw] bg-gray-50 rounded-[0.5vw] border-2 border-gray-300 h-full relative">
+      <p className="text-[0.85vw] font-medium text-gray-700 mb-[0.5vw]">
+        Preview:
+      </p>
+
+      {file.type === "application/pdf" ? (
+        <div className="mb-[1vw]">
+          {pdfPreviews[productId] ? (
+            <img
+              src={pdfPreviews[productId]}
+              alt="PDF Preview"
+              className="w-full h-auto border border-gray-300 rounded"
+              style={{
+                maxHeight: "150px",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 bg-gray-200 rounded">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+              <p className="text-gray-500 text-0.8vw">Generating preview...</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        file.type?.startsWith("image/") && (
+          <img
+            src={URL.createObjectURL(file)}
+            alt="Design Preview"
+            className="w-full h-auto mb-1vw border border-gray-300 rounded"
+            style={{
+              maxHeight: "9vw",
+              objectFit: "contain",
+            }}
+          />
+        )
+      )}
+
+      <div className="mt-2">
+        <div className="flex items-center justify-between text-0.75vw">
+          <span className="text-gray-600 truncate pr-2">{file.name}</span>
+        </div>
+        <div className="flex items-center justify-between text-0.7vw mt-1">
+          <span className="text-gray-500">
+            {(file.size / 1024).toFixed(2)} KB
+          </span>
+          <span
+            className={`px-2 py-0.5 rounded text-0.65vw font-medium ${
+              file.type === "application/pdf"
+                ? "bg-red-100 text-red-700"
+                : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {file.type === "application/pdf" ? "PDF" : "Image"}
+          </span>
+        </div>
+      </div>
+      <button
+        onClick={() => {
+          const fileUrl = URL.createObjectURL(file);
+
+          setPreviewModal({
+            isOpen: true,
+            type: file.type === "application/pdf" ? "pdf" : "image",
+            path: fileUrl,
+            name: file.name,
+          });
+          console.log(`Preview button clicked`);
+        }}
+        className="px-[1vw] py-[0.4vw] bg-green-600 text-white rounded-[0.4vw] hover:bg-green-700 font-medium text-[0.75vw] transition-all duration-200 shadow-sm hover:shadow-md flex items-center gap-[0.3vw] justify-center ml-[auto] mt-[.75vw] absolute top-[-.30vw] right-[1vw]"
+      >
+        <svg
+          className="w-[0.9vw] h-[0.9vw]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+          />
+        </svg>
+        Preview
+      </button>
+    </div>
+  );
+}
 // ... (keep all imports and constants at the top)
 
 export default function SalesPaymentDetails() {
   const navigate = useNavigate();
+  const toast = useToast();
+
   const [billData, setBillData] = useState(null);
-  const [estimatedValue, setEstimatedValue] = useState(""); // Set to empty string initially
+  const [estimatedValue, setEstimatedValue] = useState("");
   const [remarks, setRemarks] = useState("");
   const [paymentRecords, setPaymentRecords] = useState([]);
   const [orderPayments, setOrderPayments] = useState([]);
@@ -498,25 +816,24 @@ export default function SalesPaymentDetails() {
     phoneNo: "",
     preferredLocation: "",
     preferredTransport: "",
-    deliveryMethod: "", // "doorstep" or "godown"
+    deliveryMethod: "",
   });
 
   const [isCredit, setIsCredit] = useState(false);
   const [creditDays, setCreditDays] = useState("");
-
-  // NEW STATE to track if data has been saved
   const [isSaved, setIsSaved] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
-  const [hasChanges, setHasChanges] = useState(false); // Track if any data changed
-
-  // Add a state to track order's estimated value separately
+  const [hasChanges, setHasChanges] = useState(false);
   const [orderEstimatedValue, setOrderEstimatedValue] = useState(0);
-  const [totalBilledAmountForOrder, setTotalBilledAmountForOrder] = useState(0); // NEW: Track sum of all bills for this order
-
-  // State for transport suggestions
+  const [totalBilledAmountForOrder, setTotalBilledAmountForOrder] = useState(0);
   const [transportSuggestions, setTransportSuggestions] = useState([]);
   const [showTransportDropdown, setShowTransportDropdown] = useState(false);
 
+
+
+
+  // ✅ FIX 3: Move PreviewModal definition here (after state declarations)
+ 
   // Load transport names from localStorage
   useEffect(() => {
     const storedTransports = localStorage.getItem(TRANSPORT_NAMES_STORAGE_KEY);
@@ -1097,6 +1414,9 @@ export default function SalesPaymentDetails() {
       const billingEntry = {
         billingId: Date.now(),
         salesBillId: billData.billId,
+        // orderId is the key used in billing storage — BillingDetails needs it to
+        // locate and update this entry (dispatch, payment status save, etc.)
+        orderId: billData.orderId,
         orderNumber: billData.orderNumber,
         contact: billData.contact,
         products: billData.products,
@@ -1406,13 +1726,19 @@ export default function SalesPaymentDetails() {
 
   // Add payment record
   const addPaymentRecord = () => {
-    if (!bulkPayment.paymentType) {
-      alert("Please select payment type");
+
+    if (!bulkPayment.method || !bulkPayment.amount) {
+      toast.error('Please fill in payment method and amount');
       return;
     }
 
-    if (!bulkPayment.method || !bulkPayment.amount) {
-      alert("Please fill in payment method and amount");
+    if (!bulkPayment.remarks) {
+      toast.error("Please enter payment remarks");
+      return;
+    }
+
+    if (!bulkPayment.file) {
+      toast.error("Please upload payment proof");
       return;
     }
 
@@ -1436,7 +1762,7 @@ export default function SalesPaymentDetails() {
     );
 
     if (isDuplicate) {
-      alert("This payment record already exists!");
+      toast.warning("This payment record already exists!");
       return;
     }
 
@@ -1485,7 +1811,7 @@ export default function SalesPaymentDetails() {
       file: null,
     });
 
-    alert("Payment recorded successfully!");
+    toast.success("Payment recorded successfully!");
   };
 
   // Remove payment record - only for sales payments
@@ -1538,6 +1864,58 @@ export default function SalesPaymentDetails() {
       }
     }
   };
+
+  const removePaymentFromOrder = (recordId) => {
+  try {
+    const ordersData = localStorage.getItem(ORDERS_STORAGE_KEY);
+    if (!ordersData) return;
+
+    const allOrders = JSON.parse(ordersData);
+    let orderToUpdate = null;
+    let orderKey = null;
+
+    if (Array.isArray(allOrders)) {
+      const orderIndex = allOrders.findIndex(
+        (order) => order.orderNumber === billData.orderNumber,
+      );
+      if (orderIndex >= 0) {
+        orderToUpdate = allOrders[orderIndex];
+        orderKey = orderIndex;
+      }
+    } else if (typeof allOrders === "object") {
+      Object.keys(allOrders).forEach((key) => {
+        const order = allOrders[key];
+        if (order.orderNumber === billData.orderNumber) {
+          orderToUpdate = order;
+          orderKey = key;
+        }
+      });
+    }
+
+    if (orderToUpdate && orderToUpdate.paymentRecords) {
+      const updatedPayments = orderToUpdate.paymentRecords.filter(
+        (p) => p.id !== recordId,
+      );
+
+      const updatedOrder = {
+        ...orderToUpdate,
+        paymentRecords: updatedPayments,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (Array.isArray(allOrders)) {
+        allOrders[orderKey] = updatedOrder;
+      } else {
+        allOrders[orderKey] = updatedOrder;
+      }
+
+      localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(allOrders));
+      console.log("Payment removed from order:", recordId);
+    }
+  } catch (error) {
+    console.error("Error removing payment from order:", error);
+  }
+};
 
   // Helper function to get payment source label
   const getPaymentSourceLabel = (record) => {
@@ -2501,6 +2879,8 @@ export default function SalesPaymentDetails() {
         addPaymentRecord={addPaymentRecord}
         calculateTotals={calculateTotals}
       />
+
+
     </div>
   );
 }

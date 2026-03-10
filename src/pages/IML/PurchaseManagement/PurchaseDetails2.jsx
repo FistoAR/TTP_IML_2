@@ -1065,6 +1065,9 @@ const PurchaseManagement = () => {
                                         Label Order Qty
                                       </th>
                                       <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
+                                        PO Qty
+                                      </th>
+                                      <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
                                         Label Received Qty
                                       </th>
                                       <th className="border border-gray-300 px-[1.25vw] py-[.75vw] text-left text-[.85vw] font-semibold">
@@ -1121,6 +1124,37 @@ const PurchaseManagement = () => {
                                         <span>{singleTotal}</span>
                                       );
 
+                                      const poDetails = getProductPOQty(
+                                        order.id,
+                                        product.id
+                                      );
+
+                                      let poQtyCell;
+                                      if (isLidAndTub) {
+                                        const lidPoQty =
+                                          poDetails?.lid?.poQty || "-";
+                                        const tubPoQty =
+                                          poDetails?.tub?.poQty || "-";
+                                        poQtyCell = (
+                                          <div className="flex flex-col gap-[0.2vw]">
+                                            <span className="text-blue-700 font-semibold">
+                                              LID: {lidPoQty}
+                                            </span>
+                                            <span className="text-orange-600 font-semibold">
+                                              TUB: {tubPoQty}
+                                            </span>
+                                          </div>
+                                        );
+                                      } else {
+                                        const singlePoQty =
+                                          poDetails?.poQty || "-";
+                                        poQtyCell = (
+                                          <span className="font-semibold">
+                                            {singlePoQty}
+                                          </span>
+                                        );
+                                      }
+
                                       return (
                                         <tr
                                           key={product.id || idx}
@@ -1145,6 +1179,9 @@ const PurchaseManagement = () => {
                                           </td>
                                           <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-semibold">
                                             {orderQtyCell}
+                                          </td>
+                                          <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-semibold">
+                                            {poQtyCell}
                                           </td>
                                           <td className="border border-gray-300 px-[1.25vw] py-[.75vw] text-[.85vw] font-semibold">
                                             {receivedQtyCell}

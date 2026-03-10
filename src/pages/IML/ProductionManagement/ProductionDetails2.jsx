@@ -794,6 +794,29 @@ const ProductionDetails = () => {
     ? (activeComponentType === "LID" ? setMarkLidComplete : setMarkTubComplete)
     : setMarkSingleComplete;
 
+  const isAllLabelsReceived = (() => {
+    const labelData = JSON.parse(localStorage.getItem(STORAGE_KEY_LABEL_QTY) || "{}");
+    const rec = labelData[`${entry.orderId}_${entry.productId}`];
+    if (!rec) return false;
+    return rec.productComplete === true;
+  })();
+
+  const isLabelsReceivedMeetsProdQty = (() => {
+    if (isLidAndTub) {
+      if (activeComponentType === "LID") {
+        return toNumber(totalLabelsReceived.lid) >= toNumber(orderQtyDisplay.lidProdQty) && toNumber(orderQtyDisplay.lidProdQty) > 0;
+      }
+      if (activeComponentType === "TUB") {
+        return toNumber(totalLabelsReceived.tub) >= toNumber(orderQtyDisplay.tubProdQty) && toNumber(orderQtyDisplay.tubProdQty) > 0;
+      }
+      return false;
+    }
+    return toNumber(totalLabelsReceived.single) >= toNumber(orderQtyDisplay.singleProdQty) && toNumber(orderQtyDisplay.singleProdQty) > 0;
+  })();
+
+  const showMarkCompleteCheckbox = isAllLabelsReceived || isLabelsReceivedMeetsProdQty;
+
+
   return (
     <div className="min-h-screen bg-gray-50 p-[1vw]">
       <div className="max-w-[95vw] mx-auto bg-white rounded-[0.8vw] shadow-sm">
@@ -1313,21 +1336,23 @@ const ProductionDetails = () => {
           {/* Submit / Save area */}
           {!currentIsCompleted && (
             <div className="flex justify-between items-center gap-[1vw]">
-              <label className="flex items-center gap-[0.75vw] p-[0.75vw] bg-orange-50 border-2 border-orange-300 rounded-[0.5vw] cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={currentMarkComplete}
-                  onChange={(e) => setCurrentMarkComplete(e.target.checked)}
-                  className="w-[1.2vw] h-[1.2vw] accent-orange-600 cursor-pointer"
-                  id="markComplete"
-                />
-                <span className="text-[.9vw] font-semibold text-orange-800">
-                  {isLidAndTub ? `Mark ${activeComponentType} Production as Complete` : "Mark Production as Complete"}
-                </span>
-                {currentMarkComplete && (
-                  <span className="text-[.75vw] text-orange-600 ml-1">(You will be asked to confirm before saving)</span>
+               {showMarkCompleteCheckbox && (
+                  <label className="flex items-center gap-[0.75vw] p-[0.75vw] bg-orange-50 border-2 border-orange-300 rounded-[0.5vw] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={currentMarkComplete}
+                      onChange={(e) => setCurrentMarkComplete(e.target.checked)}
+                      className="w-[1.2vw] h-[1.2vw] accent-orange-600 cursor-pointer"
+                      id="markComplete"
+                    />
+                    <span className="text-[.9vw] font-semibold text-orange-800">
+                      {isLidAndTub ? `Mark ${activeComponentType} Production as Complete` : "Mark Production as Complete"}
+                    </span>
+                    {currentMarkComplete && (
+                      <span className="text-[.75vw] text-orange-600 ml-1">(You will be asked to confirm before saving)</span>
+                    )}
+                  </label>
                 )}
-              </label>
 
               <div className="flex gap-[1vw]">
                 <button onClick={handleBack} className="px-[1.5vw] py-[.6vw] border-2 border-gray-300 text-gray-700 bg-white rounded-[0.6vw] font-medium text-[0.9vw] hover:bg-gray-50 transition-all cursor-pointer">
